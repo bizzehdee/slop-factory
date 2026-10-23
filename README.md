@@ -37,8 +37,9 @@ hooks load exactly as they do in the CLI.
   and take the question off its list. Items marked "(left open by the user, date)" show as left open.
 - **Project summary.** Click the project's name above the board to read its `plan.md`, rendered.
 - **Permission modes per project:** Ask before acting, Accept file edits, Auto mode, Plan only or
-  Never ask, chosen in the message box. Auto mode lets Claude Code's safety classifier approve
-  routine actions and ask only about risky ones. Each project reopens in the mode you last chose for
+  Skip all permission checks, chosen in the message box. Auto mode lets Claude Code's safety
+  classifier approve routine actions and ask only about risky ones. Skip all permission checks is
+  `bypassPermissions` (the CLI's `--dangerously-skip-permissions`): nothing is checked at all. Each project reopens in the mode you last chose for
   it, and newly opened projects start in your most recent choice. Auto mode needs the Claude
   subscription (its checks run on Anthropic's servers), so it's unavailable for projects on a local
   model; if Claude Code refuses it, the app says so and shows the mode actually in effect.

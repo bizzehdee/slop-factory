@@ -1791,7 +1791,12 @@ function renderComposer(): void {
   autoOption.disabled = local;
   autoOption.textContent = local ? 'Auto mode (needs Claude subscription)' : 'Auto mode';
   if (p) mode.value = p.mode;
-  mode.title = p?.mode === 'auto' ? 'Claude approves routine actions itself and asks before risky ones' : 'How Claude asks before acting';
+  mode.title =
+    p?.mode === 'auto'
+      ? 'Claude approves routine actions itself and asks before risky ones'
+      : p?.mode === 'bypassPermissions'
+        ? 'Every action runs without asking (--dangerously-skip-permissions). Auto mode is the safer hands-off choice.'
+        : 'How Claude asks before acting';
   const prov = $<HTMLSelectElement>('provider');
   prov.disabled = !p;
   prov.replaceChildren(
