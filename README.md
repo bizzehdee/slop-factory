@@ -20,6 +20,9 @@ hooks load exactly as they do in the CLI.
     it starts straight away. Pressing Stop pauses the queue until you start something; **Start next**
     picks it back up. An item leaves the queue once it starts.
   - Start now. Sends Claude the work in this project's own conversation.
+  - On a phase, each of these works through its open tasks: the first starts and the rest queue
+    behind it in order. **Start in subagent** queues them in the subagent lane, where each starts
+    when the previous subagent finishes. Remove any queued task with its × at any time.
   - Start in subagent (own worktree). Claude runs the work in a background subagent with
     `isolation: "worktree"`, so it gets its own git worktree and branch and works in parallel with
     the conversation. Its task-file edits land in that worktree until you merge it. Claude Code's

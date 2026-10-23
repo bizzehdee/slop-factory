@@ -17,6 +17,7 @@ import type {
   FrameworkInfo,
   ItemAction,
   OpenQuestion,
+  QueueLane,
   PhaseRow,
   PermissionModeName,
   ProcessInfo,
@@ -106,6 +107,15 @@ interface Proj {
   unseen: boolean;
   replaying: boolean;
   holdQueue: boolean; // set by Stop: the queue waits until you start something again
+  subagentLane: Set<string>; // queued keys that start in a background subagent
+  laneRun?: LaneRun; // the subagent-lane item running now
+}
+
+/** A subagent-lane item that was started: which background subagent it became, once that shows up. */
+interface LaneRun {
+  key: string;
+  known: Set<string>; // subagents already running when it started
+  processId?: string;
 }
 
 const projects = new Map<string, Proj>();
@@ -166,6 +176,7 @@ function newProject(dir: string, name: string): Proj {
     unseen: false,
     replaying: false,
     holdQueue: false,
+    subagentLane: new Set(),
   };
 }
 
@@ -1069,6 +1080,17 @@ function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
   const queued = p.priorities.includes(item.key);
   const items: MenuItem[] = [];
   const progress = progressLabel(item);
+  if (item.kind === 'phase' && !item.done) {
+    // A phase starts as its open tasks, queued in order; each can come off the queue later.
+    const tasks = phaseTasks(p, item);
+    const inQueue = tasks.filter((t) => p.priorities.includes(t.key));
+    items.push({ label: tasks.length ? 'Prioritise its tasks' : PRIORITISE_LABEL, run: () => prioritise(p, item) });
+    items.push({ label: tasks.length > 1 ? 'Start now, queue the rest' : 'Start now', run: () => startPhase(p, item, 'main') });
+    items.push({ label: tasks.length > 1 ? 'Start in subagent, queue the rest' : 'Start in subagent (own worktree)', run: () => startPhase(p, item, 'subagent') });
+    if (inQueue.length) items.push({ label: `Remove its ${inQueue.length} queued task${inQueue.length > 1 ? 's' : ''}`, run: () => inQueue.forEach((t) => send({ type: 'togglePriority', project: p.dir, key: t.key })) });
+    if (progress) items.push({ label: progress, run: () => showProgress(p, item) });
+    return items;
+  }
   if (!item.done) {
     items.push({ label: queued ? 'Remove from queue' : PRIORITISE_LABEL, run: () => prioritise(p, item) });
     items.push({ label: 'Start now', run: () => runAction(p, 'start', item) });
@@ -1092,17 +1114,77 @@ function runAction(p: Proj, action: ItemAction, item: BoardItem): void {
 
 const isFree = (p: Proj) => !p.busy && !p.pending.size;
 
-function nextQueued(p: Proj, skip?: string): BoardItem | undefined {
+const laneOf = (p: Proj, key: string): QueueLane => (p.subagentLane.has(key) ? 'subagent' : 'main');
+
+function nextQueued(p: Proj, skip?: string, lane: QueueLane = 'main'): BoardItem | undefined {
   const items = allItems(p);
   for (const key of p.priorities) {
     const it = items.get(key);
-    if (it && !it.done && key !== skip) return it;
+    if (it && !it.done && key !== skip && laneOf(p, key) === lane) return it;
   }
   return undefined;
 }
 
+/** A phase's open tasks, top level only, in the order its document lists them. */
+function phaseTasks(p: Proj, phase: BoardItem): BoardItem[] {
+  const open = (t: TaskItem) => t.depth === 0 && (t.state === 'todo' || t.state === 'doing');
+  if (phase.legacy) {
+    const file = p.tasks.find((f) => f.kind === 'legacy');
+    const sec = file && legacySections(file).find((s) => s.name === phase.title);
+    return file && sec ? sec.items.filter(open).map((t) => taskItem(p, file, t)) : [];
+  }
+  const doc = p.tasks.find((f) => f.kind === 'phase' && f.rel === phase.rel);
+  return doc ? trackedItems(doc).filter(open).map((t) => taskItem(p, doc, t)) : [];
+}
+
+/** Start a phase's first open task now and queue the rest behind it, in the same lane. */
+function startPhase(p: Proj, phase: BoardItem, lane: QueueLane): void {
+  const [first, ...rest] = phaseTasks(p, phase);
+  // No task list yet: hand the agent the phase itself.
+  if (!first) return runAction(p, lane === 'main' ? 'start' : 'startSubagent', phase);
+  if (rest.length) send({ type: 'enqueue', project: p.dir, keys: rest.map((t) => t.key), lane, front: true });
+  if (lane === 'main') return runAction(p, 'start', first);
+  if (!p.laneRun) p.laneRun = { key: first.key, known: liveSubagents(p) };
+  runAction(p, 'startSubagent', first);
+}
+
+const liveSubagents = (p: Proj) => new Set(p.processes.filter((x) => x.kind === 'subagent' && ['running', 'pending'].includes(x.status)).map((x) => x.id));
+
+/** Start the next subagent-lane item once the one before it has finished. */
+function startSubagentQueued(p: Proj): void {
+  if (p.laneRun || p.holdQueue) return;
+  const next = nextQueued(p, undefined, 'subagent');
+  if (!next) return;
+  p.laneRun = { key: next.key, known: liveSubagents(p) };
+  runAction(p, 'startSubagent', next);
+}
+
+/** Follow the subagent-lane item: find the background subagent it became, and move on when that ends. */
+function trackLane(p: Proj): void {
+  const run = p.laneRun;
+  if (!run || p.replaying) return;
+  if (!run.processId) {
+    const started = p.processes.find((x) => x.kind === 'subagent' && !run.known.has(x.id));
+    if (started) run.processId = started.id;
+    return;
+  }
+  const proc = p.processes.find((x) => x.id === run.processId);
+  if (proc && ['running', 'pending', 'paused'].includes(proc.status)) return;
+  p.laneRun = undefined;
+  startSubagentQueued(p);
+}
+
 /** Queue an item to start after the current work, or take it off the queue. */
 function prioritise(p: Proj, item: BoardItem): void {
+  if (item.kind === 'phase') {
+    const tasks = phaseTasks(p, item).filter((t) => !p.priorities.includes(t.key));
+    if (tasks.length) {
+      send({ type: 'enqueue', project: p.dir, keys: tasks.map((t) => t.key), lane: 'main', front: false });
+      const ahead = isFree(p) ? nextQueued(p) : undefined;
+      if (isFree(p)) runAction(p, 'start', ahead ?? tasks[0]);
+      return;
+    }
+  }
   if (p.priorities.includes(item.key)) return send({ type: 'togglePriority', project: p.dir, key: item.key });
   const ahead = isFree(p) ? nextQueued(p, item.key) : undefined;
   // Nothing running and nothing queued ahead of it: there's no current work to wait for.
@@ -1115,7 +1197,13 @@ function prioritise(p: Proj, item: BoardItem): void {
 function startQueued(p: Proj): void {
   const held = p.holdQueue || !!p.lastTurn?.isError;
   p.holdQueue = false;
-  if (held || !isFree(p)) return;
+  if (held) return;
+  // A subagent-lane start that never became a background subagent has run its course with the turn.
+  if (p.laneRun && !p.laneRun.processId) {
+    p.laneRun = undefined;
+    startSubagentQueued(p);
+  }
+  if (!isFree(p)) return;
   const next = nextQueued(p);
   if (next) runAction(p, 'start', next);
 }
@@ -1467,6 +1555,13 @@ function phaseTop(p: Proj, item: BoardItem | undefined, head: HTMLElement): HTML
   return h('div', { class: 'phase-top' }, head, moreButton(p, item));
 }
 
+function dequeueButton(p: Proj, it: BoardItem): HTMLButtonElement {
+  const b = h('button', { class: 'more dequeue', type: 'button', title: 'Remove from the queue', 'aria-label': `Remove ${itemRef(it) || it.title} from the queue` }) as HTMLButtonElement;
+  b.append(svgIcon(ICON_CLOSE));
+  b.addEventListener('click', () => send({ type: 'togglePriority', project: p.dir, key: it.key }));
+  return b;
+}
+
 function renderPriorities(p: Proj): void {
   const section = $('priorities-section');
   const items = allItems(p);
@@ -1474,9 +1569,27 @@ function renderPriorities(p: Proj): void {
   section.hidden = !queued.length;
   const open = queued.filter((q) => !q.done).length;
   const next = isFree(p) ? nextQueued(p) : undefined;
+  // The subagent lane stalls after Stop or a reload; Start next picks it up too.
+  const nextSub = p.laneRun ? undefined : nextQueued(p, undefined, 'subagent');
   $('priorities-count').replaceChildren(
     open ? `${open} queued` : '',
-    next ? h('button', { class: 'link-button', type: 'button', title: `Start ${itemRef(next) || next.title} now`, onclick: () => runAction(p, 'start', next) }, 'Start next') : '',
+    next || nextSub
+      ? h(
+          'button',
+          {
+            class: 'link-button',
+            type: 'button',
+            title: 'Start the next queued item now',
+            onclick: () => {
+              p.holdQueue = false;
+              if (next) runAction(p, 'start', next);
+              startSubagentQueued(p);
+              renderPriorities(p);
+            },
+          },
+          'Start next',
+        )
+      : '',
   );
   $('priorities').replaceChildren(
     ...queued.map((it) =>
@@ -1485,7 +1598,13 @@ function renderPriorities(p: Proj): void {
         { class: `priority kind-${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
         h('span', { class: 'item-id' }, itemRef(it) || '·'),
         h('button', { class: 'priority-title', type: 'button', onclick: () => showProgress(p, it), title: 'Show progress' }, it.title),
-        h('span', { class: 'priority-state' }, it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : ''),
+        h(
+          'span',
+          { class: 'priority-state' },
+          p.laneRun?.key === it.key ? 'starting' : it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : '',
+          laneOf(p, it.key) === 'subagent' ? h('span', { class: 'lane-tag', title: 'Starts in a background subagent with its own worktree' }, 'subagent') : null,
+        ),
+        dequeueButton(p, it),
         moreButton(p, it),
       ),
     ),
@@ -2092,6 +2211,7 @@ function onEvent(e: SidecarEvent): void {
       break;
     case 'processes':
       p.processes = e.list;
+      trackLane(p);
       break;
     case 'tasks':
       p.tasks = e.files;
@@ -2101,6 +2221,7 @@ function onEvent(e: SidecarEvent): void {
       break;
     case 'priorities':
       p.priorities = e.order;
+      p.subagentLane = new Set(e.subagent ?? []);
       break;
     case 'docs':
       if (docsView && docsView.project === p.dir && docsView.requestId === e.requestId) {

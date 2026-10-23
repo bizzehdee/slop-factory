@@ -36,6 +36,10 @@ export interface ActionItem {
 // in its own git worktree, in parallel with the conversation.
 export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
 
+// The priority queue has two lanes: "main" items start one at a time in the conversation as each
+// turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
+export type QueueLane = 'main' | 'subagent';
+
 export type UiCommand =
   | { type: 'open'; projectDir: string; permissionMode?: PermissionModeName }
   | { type: 'close'; project: string }
@@ -60,6 +64,7 @@ export type UiCommand =
   | { type: 'setPermissionMode'; project: string; mode: PermissionModeName }
   | { type: 'toggleTask'; project: string; rel: string; line: number; text: string }
   | { type: 'togglePriority'; project: string; key: string }
+  | { type: 'enqueue'; project: string; keys: string[]; lane: QueueLane; front?: boolean }
   | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[]; blocks?: { rel: string; line: number }[] }
   | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem }
   | { type: 'setProvider'; project: string; providerId: string }
@@ -244,7 +249,7 @@ export type ProjectEvent =
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
   | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
-  | { type: 'priorities'; order: string[] }
+  | { type: 'priorities'; order: string[]; subagent?: string[] } // subagent: the keys in the subagent lane
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }
   | { type: 'replayDone' }
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };

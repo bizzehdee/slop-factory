@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ActionItem, ItemAction } from './protocol.js';
+import type { ActionItem, ItemAction, QueueLane } from './protocol.js';
 import { LEGACY_PROJECT_DIR, PROJECT_DIR } from './names.js';
 
 // Prompts sent to Claude when you press a board button. Override any of them in
@@ -92,6 +92,7 @@ export function promptFor(action: ItemAction, item: ActionItem, prompts: DeskPro
 /** Priority order for a project, kept in .slop-factory/priorities.json beside your code. */
 export class Priorities {
   private order: string[] = [];
+  private subagent = new Set<string>(); // keys that start in a background subagent rather than the conversation
   private file: string;
   private legacyFile: string;
 
@@ -104,19 +105,41 @@ export class Priorities {
     try {
       const raw = JSON.parse(await fs.readFile(this.file, 'utf8').catch(() => fs.readFile(this.legacyFile, 'utf8')));
       this.order = Array.isArray(raw.order) ? raw.order.filter((k: unknown) => typeof k === 'string') : [];
+      this.subagent = new Set(Array.isArray(raw.subagent) ? raw.subagent.filter((k: unknown) => typeof k === 'string' && this.order.includes(k)) : []);
     } catch {
       this.order = [];
+      this.subagent.clear();
     }
-    return this.order;
+    return this.list();
   }
 
   list(): string[] {
     return [...this.order];
   }
 
+  /** The queued keys that start in a background subagent. */
+  subagentKeys(): string[] {
+    return this.order.filter((k) => this.subagent.has(k));
+  }
+
   /** Add to the end of the queue, or remove if already there. */
   async toggle(key: string): Promise<string[]> {
-    this.order = this.order.includes(key) ? this.order.filter((k) => k !== key) : [...this.order, key];
+    if (this.order.includes(key)) return this.remove(key);
+    this.order = [...this.order, key];
+    return this.save();
+  }
+
+  /**
+   * Queue several keys in the order given, at the front or the back, moving any already queued.
+   * A phase started as a whole queues its open tasks this way.
+   */
+  async enqueue(keys: string[], lane: QueueLane, front: boolean): Promise<string[]> {
+    const rest = this.order.filter((k) => !keys.includes(k));
+    this.order = front ? [...keys, ...rest] : [...rest, ...keys];
+    for (const k of keys) {
+      if (lane === 'subagent') this.subagent.add(k);
+      else this.subagent.delete(k);
+    }
     return this.save();
   }
 
@@ -124,12 +147,14 @@ export class Priorities {
   async remove(key: string): Promise<string[]> {
     if (!this.order.includes(key)) return this.list();
     this.order = this.order.filter((k) => k !== key);
+    this.subagent.delete(key);
     return this.save();
   }
 
   private async save(): Promise<string[]> {
     await fs.mkdir(path.dirname(this.file), { recursive: true });
-    await fs.writeFile(this.file, JSON.stringify({ order: this.order }, null, 2) + '\n', 'utf8');
+    const subagent = this.subagentKeys();
+    await fs.writeFile(this.file, JSON.stringify({ order: this.order, ...(subagent.length ? { subagent } : {}) }, null, 2) + '\n', 'utf8');
     return this.list();
   }
 }

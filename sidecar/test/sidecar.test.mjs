@@ -571,3 +571,28 @@ test('createProject makes the folder, a git repo with its remote, and the chosen
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('enqueue puts a phase\'s tasks at the front or back, in their lane, and remove clears the lane', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-'));
+  try {
+    const q = new Priorities(root);
+    await q.load();
+    await q.toggle('B1');
+    await q.enqueue(['T7', 'T8'], 'subagent', true);
+    assert.deepEqual(q.list(), ['T7', 'T8', 'B1']);
+    assert.deepEqual(q.subagentKeys(), ['T7', 'T8']);
+    await q.enqueue(['T8', 'T9'], 'main', false);
+    assert.deepEqual(q.list(), ['T7', 'B1', 'T8', 'T9']);
+    assert.deepEqual(q.subagentKeys(), ['T7']);
+    await q.remove('T7');
+    const again = new Priorities(root);
+    assert.deepEqual(await again.load(), ['B1', 'T8', 'T9']);
+    assert.deepEqual(again.subagentKeys(), []);
+    await again.enqueue(['T10'], 'subagent', false);
+    const third = new Priorities(root);
+    await third.load();
+    assert.deepEqual(third.subagentKeys(), ['T10']);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

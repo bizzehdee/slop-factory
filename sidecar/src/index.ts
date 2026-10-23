@@ -69,6 +69,8 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
   };
 }
 
+const queueEvent = (q: Priorities): ProjectEvent => ({ type: 'priorities', order: q.list(), subagent: q.subagentKeys() });
+
 async function loadPrompts(dir: string): Promise<DeskPrompts> {
   const raw = await readProjectSettings(dir);
   return raw.prompts && typeof raw.prompts === 'object' ? (raw.prompts as DeskPrompts) : {};
@@ -103,7 +105,8 @@ async function openProject(dirIn: string, requested?: PermissionModeName): Promi
   out(projectEvent);
 
   const priorities = new Priorities(dir);
-  out({ type: 'priorities', order: await priorities.load() });
+  await priorities.load();
+  out(queueEvent(priorities));
 
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
   const session = new AgentSession(dir, mode, out, provider);
@@ -248,7 +251,13 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).tasks.toggle(cmd.rel, cmd.line, cmd.text);
     case 'togglePriority': {
       const p = need(cmd.project);
-      return projectEmitter(p)({ type: 'priorities', order: await p.priorities.toggle(cmd.key) });
+      await p.priorities.toggle(cmd.key);
+      return p.out(queueEvent(p.priorities));
+    }
+    case 'enqueue': {
+      const p = need(cmd.project);
+      await p.priorities.enqueue(cmd.keys, cmd.lane, !!cmd.front);
+      return p.out(queueEvent(p.priorities));
     }
     case 'readDocs': {
       const p = need(cmd.project);
@@ -261,7 +270,8 @@ async function handle(cmd: UiCommand): Promise<void> {
       p.session.send(promptFor(cmd.action, cmd.item, p.prompts), { kind: cmd.action, key: cmd.item.key });
       // Once something starts it is no longer waiting in the priority queue.
       if ((cmd.action === 'start' || cmd.action === 'startSubagent') && p.priorities.list().includes(cmd.item.key)) {
-        p.out({ type: 'priorities', order: await p.priorities.remove(cmd.item.key) });
+        await p.priorities.remove(cmd.item.key);
+        p.out(queueEvent(p.priorities));
       }
       return;
     }
