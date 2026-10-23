@@ -170,6 +170,35 @@
         </div>
       </form>
     </dialog>
+    <dialog id="login-dialog" class="dialog" aria-labelledby="login-title">
+      <div class="dialog-body">
+        <h2 id="login-title">Sign in with Claude</h2>
+        <p class="dialog-lead">
+          Projects run on your Claude subscription. If Claude Code is already signed in on this computer, that login is used;
+          otherwise sign in once here.
+        </p>
+        <div id="login-start" class="dialog-actions">
+          <button id="login-go" class="button primary" type="button">Sign in with Claude</button>
+          <button id="login-console" class="button quiet" type="button">Use an Anthropic Console account</button>
+        </div>
+        <div id="login-waiting" class="login-waiting" hidden>
+          <p class="field-hint">Finish signing in in your browser. <button id="login-url" class="link-button" type="button">Open the sign-in page again</button></p>
+          <form id="login-code-form" class="field">
+            <label for="login-code">If the page gives you a code, paste it here</label>
+            <div class="field-row">
+              <input id="login-code" type="text" spellcheck="false" autocomplete="off" />
+              <button class="button" type="submit">Continue</button>
+            </div>
+          </form>
+        </div>
+        <p id="login-error" class="field-hint warn-text" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button id="login-local" class="button quiet" type="button">Use a local model instead</button>
+          <span class="spacer"></span>
+          <button id="login-recheck" class="button quiet" type="button" title="Check again, e.g. after signing in with the claude command">Check again</button>
+        </div>
+      </div>
+    </dialog>
     <dialog id="new-project-dialog" class="dialog" aria-labelledby="new-project-title">
       <form id="new-project-form" method="dialog">
         <h2 id="new-project-title">New project</h2>

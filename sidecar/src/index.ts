@@ -12,6 +12,7 @@ import { Priorities, promptFor, type DeskPrompts } from './actions.js';
 import { ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
+import { authStatus, LoginFlow } from './auth.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -144,9 +145,20 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   });
 }
 
-/** Show a folder in Finder, Explorer or the desktop's file manager. */
+const login = new LoginFlow(
+  (url) => emit({ type: 'loginUrl', url }),
+  (line) => emit({ type: 'loginLine', line }),
+  async (ok, error) => {
+    emit({ type: 'loginDone', ok, error });
+    emit({ type: 'auth', state: await authStatus() });
+  },
+);
+
+/** Show a folder in Finder, Explorer or the desktop's file manager, or a web page in the browser. */
 function openInFileManager(dir: string): Promise<void> {
-  const [cmd, args] = process.platform === 'darwin' ? ['open', [dir]] : process.platform === 'win32' ? ['explorer', [dir]] : ['xdg-open', [dir]];
+  const url = /^https:\/\//.test(dir);
+  const [cmd, args] =
+    process.platform === 'darwin' ? ['open', [dir]] : process.platform === 'win32' ? (url ? ['cmd', ['/c', 'start', '""', dir]] : ['explorer', [dir]]) : ['xdg-open', [dir]];
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
     child.once('error', (err) => reject(new Error(`Couldn't open the folder with ${cmd}: ${err.message}`)));
@@ -176,6 +188,18 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'listEditors':
       emit({ type: 'editors', list: await installedEditors() });
       return;
+    case 'checkAuth':
+      emit({ type: 'auth', state: await authStatus() });
+      return;
+    case 'login':
+      return login.start(cmd.console);
+    case 'loginCode':
+      return login.sendCode(cmd.code);
+    case 'cancelLogin':
+      return login.cancel();
+    case 'openUrl':
+      if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
+      return openInFileManager(cmd.url);
     case 'send':
       if (cmd.text.trim()) need(cmd.project).session.send(cmd.text);
       return;

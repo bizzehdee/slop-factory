@@ -42,6 +42,11 @@ export type UiCommand =
   | { type: 'openFolder'; project: string } // in the system file manager
   | { type: 'openWith'; project: string; editor: string } // an EditorInfo id
   | { type: 'listEditors' }
+  | { type: 'checkAuth' }
+  | { type: 'login'; console?: boolean } // console: an Anthropic Console account instead of a Claude subscription
+  | { type: 'loginCode'; code: string }
+  | { type: 'cancelLogin' }
+  | { type: 'openUrl'; url: string } // https only, in the default browser
   | { type: 'send'; project: string; text: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
@@ -58,6 +63,14 @@ export type UiCommand =
   | { type: 'deleteProvider'; id: string }
   | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string }
   | { type: 'createProject'; requestId: string; request: NewProjectRequest };
+
+/** Whether Claude Code is signed in, from "claude auth status". */
+export interface AuthState {
+  loggedIn: boolean;
+  method?: string; // e.g. "oauth_token", "api_key"
+  provider?: string; // "firstParty", "bedrock", ...
+  error?: string;
+}
 
 /** An editor installed on this machine that "Open with" can use. */
 export interface EditorInfo {
@@ -228,6 +241,10 @@ export type GlobalEvent =
   | { type: 'providers'; list: ProviderConfig[] }
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
   | { type: 'editors'; list: EditorInfo[] }
+  | { type: 'auth'; state: AuthState }
+  | { type: 'loginUrl'; url: string }
+  | { type: 'loginLine'; line: string }
+  | { type: 'loginDone'; ok: boolean; error?: string }
   | { type: 'createProgress'; requestId: string; line: string }
   | { type: 'projectCreated'; requestId: string; ok: boolean; dir?: string; error?: string }
   | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string };

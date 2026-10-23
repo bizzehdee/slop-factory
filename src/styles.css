@@ -2120,3 +2120,19 @@ textarea {
 .field[hidden] {
   display: none;
 }
+
+/* ---------- sign in ---------- */
+
+.dialog-body {
+  display: grid;
+  gap: 14px;
+  padding: 22px 24px 18px;
+}
+.login-waiting {
+  display: grid;
+  gap: 10px;
+}
+.login-waiting[hidden],
+#login-start[hidden] {
+  display: none;
+}

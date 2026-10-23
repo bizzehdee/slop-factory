@@ -222,6 +222,7 @@ Environment variables:
 | `CLAUDE_DESK_SIDECAR` | Path to a different sidecar `index.js`. |
 | `CLAUDE_DESK_CONFIG_DIR` | Where providers are saved instead of `~/.claude-desk`. |
 | `CLAUDE_DESK_ALLOW_API_KEY` | `1` keeps `ANTHROPIC_API_KEY` instead of removing it. |
+| `CLAUDE_DESK_CLAUDE` | Path to the `claude` binary used to check and make the sign-in, instead of the one bundled with the SDK. |
 
 ## Known gaps
 
