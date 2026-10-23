@@ -1414,10 +1414,27 @@ textarea {
   font-size: var(--step--1);
   cursor: pointer;
 }
-.menu-item:hover,
-.menu-item:focus-visible {
+.menu-item:hover:not(:disabled),
+.menu-item:focus-visible,
+.menu-item[aria-expanded='true'] {
   background: var(--raised);
   outline: none;
+}
+.menu-item:disabled {
+  color: var(--faint);
+  cursor: default;
+}
+.menu-item.has-submenu {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.menu-caret {
+  color: var(--muted);
+}
+.submenu {
+  min-width: 180px;
 }
 
 /* ---------- transcripts ---------- */

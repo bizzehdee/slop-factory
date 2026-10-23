@@ -11,6 +11,7 @@ import { scanFramework } from './framework.js';
 import { Priorities, promptFor, type DeskPrompts } from './actions.js';
 import { ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
+import { installedEditors, openInEditor } from './editors.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -170,6 +171,11 @@ async function handle(cmd: UiCommand): Promise<void> {
       return closeProject(cmd.project);
     case 'openFolder':
       return openInFileManager(need(cmd.project).dir);
+    case 'openWith':
+      return openInEditor(cmd.editor, need(cmd.project).dir);
+    case 'listEditors':
+      emit({ type: 'editors', list: await installedEditors() });
+      return;
     case 'send':
       if (cmd.text.trim()) need(cmd.project).session.send(cmd.text);
       return;

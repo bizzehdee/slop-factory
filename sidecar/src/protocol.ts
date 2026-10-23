@@ -40,6 +40,8 @@ export type UiCommand =
   | { type: 'open'; projectDir: string; permissionMode?: PermissionModeName }
   | { type: 'close'; project: string }
   | { type: 'openFolder'; project: string } // in the system file manager
+  | { type: 'openWith'; project: string; editor: string } // an EditorInfo id
+  | { type: 'listEditors' }
   | { type: 'send'; project: string; text: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
@@ -56,6 +58,12 @@ export type UiCommand =
   | { type: 'deleteProvider'; id: string }
   | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string }
   | { type: 'createProject'; requestId: string; request: NewProjectRequest };
+
+/** An editor installed on this machine that "Open with" can use. */
+export interface EditorInfo {
+  id: string;
+  name: string;
+}
 
 export interface NewProjectRequest {
   name: string;
@@ -219,6 +227,7 @@ export type GlobalEvent =
   | { type: 'ready'; sdkVersion: string }
   | { type: 'providers'; list: ProviderConfig[] }
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
+  | { type: 'editors'; list: EditorInfo[] }
   | { type: 'createProgress'; requestId: string; line: string }
   | { type: 'projectCreated'; requestId: string; ok: boolean; dir?: string; error?: string }
   | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string };
