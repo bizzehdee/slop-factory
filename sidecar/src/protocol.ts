@@ -246,7 +246,7 @@ export type ProjectEvent =
   | { type: 'permissionRequest'; id: string; toolName: string; input: unknown; reason?: string }
   | { type: 'askQuestions'; id: string; questions: AskedQuestion[] } // closed by permissionResolved
   | { type: 'permissionResolved'; id: string }
-  | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
+  | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; stopped?: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
   | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
   | { type: 'priorities'; order: string[]; subagent?: string[] } // subagent: the keys in the subagent lane

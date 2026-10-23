@@ -131,8 +131,11 @@ export class AgentSession {
   }
 
   async interrupt(): Promise<void> {
+    if (this.pendingTurns > 0) this.interrupted = true;
     await this.q?.interrupt();
   }
+
+  private interrupted = false; // Stop was pressed: the turn's end is a stop, not an error
 
   async stopProcess(id: string): Promise<void> {
     await this.q?.stopTask(id);
@@ -250,15 +253,20 @@ export class AgentSession {
 
       case 'result': {
         this.pendingTurns = Math.max(0, this.pendingTurns - 1);
+        const stopped = this.interrupted;
+        this.interrupted = false;
+        // Internal diagnostics ride along in errors; they mean nothing to the person reading.
+        const errors = msg.subtype === 'success' ? undefined : msg.errors?.filter((e) => !e.startsWith('[ede_diagnostic]'));
         this.emit({
           type: 'turnEnd',
           durationMs: msg.duration_ms,
           numTurns: msg.num_turns,
-          isError: msg.is_error,
+          isError: msg.is_error && !stopped,
+          stopped,
           inputTokens: msg.usage?.input_tokens ?? 0,
           outputTokens: msg.usage?.output_tokens ?? 0,
           costUsd: msg.total_cost_usd ?? 0,
-          errors: msg.subtype === 'success' ? undefined : msg.errors,
+          errors: stopped ? undefined : errors,
         });
         if (this.pendingTurns === 0) this.emit({ type: 'busy', busy: false });
         return;

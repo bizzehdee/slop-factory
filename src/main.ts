@@ -1195,7 +1195,7 @@ function prioritise(p: Proj, item: BoardItem): void {
 
 /** Claude just finished a turn: start the next queued item, unless you stopped it or it failed. */
 function startQueued(p: Proj): void {
-  const held = p.holdQueue || !!p.lastTurn?.isError;
+  const held = p.holdQueue || !!p.lastTurn?.isError || !!p.lastTurn?.stopped;
   p.holdQueue = false;
   if (held) return;
   // A subagent-lane start that never became a background subagent has run its course with the turn.
@@ -2207,7 +2207,8 @@ function onEvent(e: SidecarEvent): void {
       return markAnswered(p, e.id, 'Cancelled');
     case 'turnEnd':
       p.lastTurn = e;
-      if (e.isError) notice(p, 'error', e.errors?.length ? e.errors.join('\n') : 'The turn ended with an error.');
+      if (e.stopped) notice(p, 'info', 'Stopped.');
+      else if (e.isError) notice(p, 'error', e.errors?.length ? e.errors.join('\n') : 'The turn ended with an error.');
       break;
     case 'processes':
       p.processes = e.list;
