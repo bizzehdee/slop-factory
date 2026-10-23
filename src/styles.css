@@ -1,5 +1,5 @@
-/* Claude Desk. Styled after the Claude desktop apps: warm ivory and charcoal,
-   a clay accent, serif replies, and Claude Code's terminal-style tool ledger.
+/* Slop Factory. Warm ivory and charcoal,
+   a clay accent, serif replies, and a terminal-style tool ledger.
    Status colours (done, in progress, bug) carry meaning on the task board. */
 
 :root {
@@ -2262,4 +2262,23 @@ textarea {
 #add-local-model,
 #mcp-add {
   justify-self: start;
+}
+
+/* ---------- footer ---------- */
+
+.app-footer {
+  margin-top: auto;
+  padding: 16px 20px 12px;
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+.app-name {
+  font-family: var(--serif);
+  color: var(--muted);
+}
+#settings-title small {
+  font-family: var(--sans);
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--faint);
 }

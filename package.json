@@ -1,5 +1,5 @@
 {
-  "name": "claude-desk",
+  "name": "slop-factory",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -29,5 +29,6 @@
     "vite": "^8.3.5",
     "ws": "^8.22.0"
   },
-  "description": "Desktop app for Claude Code with your own agent framework, live task board and process monitor"
+  "description": "A desktop app for running coding agents on your projects, with a live task board, questions and a process monitor",
+  "license": "BSD-3-Clause"
 }

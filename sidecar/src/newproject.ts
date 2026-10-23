@@ -32,7 +32,7 @@ async function sh(cmd: string, args: string[], cwd: string, log: (line: string) 
   }
 }
 
-/** A copy of agent-framework kept beside Claude Desk's settings, fetched or brought up to date. */
+/** A copy of agent-framework kept beside the app's settings, fetched or brought up to date. */
 export async function frameworkCopy(log: (line: string) => void): Promise<string> {
   const dir = path.join(configDir(), 'agent-framework');
   const have = await fs.stat(path.join(dir, '.git')).then(() => true, () => false);

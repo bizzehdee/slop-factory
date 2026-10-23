@@ -127,12 +127,13 @@ function store(key: string, value: string | null): void {
 }
 function load(key: string): string | null {
   try {
-    return localStorage.getItem(key);
+    // Earlier builds, called Claude Desk, kept these under claude-desk:.
+    return localStorage.getItem(key) ?? localStorage.getItem(key.replace(/^slop-factory:/, 'claude-desk:'));
   } catch {
     return null;
   }
 }
-const saveOpenProjects = () => store('claude-desk:projects', JSON.stringify([...projects.keys()]));
+const saveOpenProjects = () => store('slop-factory:projects', JSON.stringify([...projects.keys()]));
 
 function newProject(dir: string, name: string): Proj {
   const transcript = h('div', { class: 'transcript', role: 'log', 'aria-live': 'polite', hidden: true });
@@ -356,7 +357,7 @@ const appendEntry = (p: Proj, el: HTMLElement) => stickToBottom(p, () => p.trans
 
 function emptyTranscript(p: Proj): void {
   p.transcript.replaceChildren(
-    h('div', { class: 'empty' }, h('p', {}, `Claude has ${p.name}'s rules loaded. Ask for something, or use the ⋯ menu on a task to start it.`)),
+    h('div', { class: 'empty' }, h('p', {}, `The agent has ${p.name}'s rules loaded. Ask for something, or use the ⋯ menu on a task to start it.`)),
   );
 }
 
@@ -505,8 +506,8 @@ function permissionRequest(p: Proj, id: string, toolName: string, input: unknown
   };
   const card = h(
     'div',
-    { class: 'permission', role: 'group', 'aria-label': `Claude wants to use ${toolName}` },
-    h('p', { class: 'permission-title' }, `Claude wants to use ${toolName}`),
+    { class: 'permission', role: 'group', 'aria-label': `The agent wants to use ${toolName}` },
+    h('p', { class: 'permission-title' }, `The agent wants to use ${toolName}`),
     s.detail ? h('code', { class: 'permission-detail' }, s.detail) : null,
     reason ? h('p', { class: 'permission-reason' }, reason) : null,
     h(
@@ -594,8 +595,8 @@ function askQuestions(p: Proj, id: string, questions: AskedQuestion[]): void {
   p.asked.set(id, questions);
   const card = h(
     'div',
-    { class: 'permission ask-note', role: 'group', 'aria-label': 'Claude has questions for you' },
-    h('p', { class: 'permission-title' }, questions.length === 1 ? 'Claude has a question for you' : `Claude has ${questions.length} questions for you`),
+    { class: 'permission ask-note', role: 'group', 'aria-label': 'The agent has questions for you' },
+    h('p', { class: 'permission-title' }, questions.length === 1 ? 'The agent has a question for you' : `The agent has ${questions.length} questions for you`),
     h('p', { class: 'permission-reason' }, questions.map((q) => q.question).join(' · ')),
     h('div', { class: 'permission-actions' }, h('button', { class: 'button primary', type: 'button', onclick: () => openQuestion(p, `ask:${id}`) }, 'Answer')),
   );
@@ -675,7 +676,7 @@ function askForm(p: Proj, id: string, questions: AskedQuestion[]): { body: HTMLE
     {
       class: 'button quiet',
       type: 'button',
-      title: 'Claude carries on and you answer in your next message',
+      title: 'The agent carries on and you answer in your next message',
       onclick: () => {
         send({ type: 'answerQuestions', project: p.dir, id });
         settle('Dismissed: answer in the conversation');
@@ -776,7 +777,7 @@ function renderQuestionView(p: Proj | undefined, id: string): void {
   const row = p && !askId ? openRows(p).find((r) => r.id === id) : undefined;
 
   if (p && askId && asked) {
-    $('docs-ref').textContent = 'Claude is asking';
+    $('docs-ref').textContent = 'The agent is asking';
     $('docs-title').textContent = asked.length > 1 ? `${asked.length} questions` : asked[0].header || 'A question';
     const form = askForm(p, askId, asked);
     body.replaceChildren(form.body);
@@ -820,7 +821,7 @@ function renderQuestionView(p: Proj | undefined, id: string): void {
   parts.push(
     text,
     h('label', { class: 'q-answer-label' }, h('span', {}, 'Your answer'), answer),
-    h('p', { class: 'field-hint' }, 'Ctrl+Enter to send. Or have Claude ask it as multiple choice, with the options it recommends.'),
+    h('p', { class: 'field-hint' }, 'Ctrl+Enter to send. Or have the agent ask it as multiple choice, with the options it recommends.'),
   );
   body.replaceChildren(...parts);
   actions.replaceChildren(sendBtn, h('button', { class: 'button', type: 'button', onclick: () => askAsChoices(p, [id]) }, 'Ask me as choices'));
@@ -850,7 +851,7 @@ function renderQuestions(force = false): void {
   const item = (id: string, label: string, extra: { pick?: boolean; tag?: string; cls?: string }) => {
     const li = h('li', { class: `q-row${extra.cls ? ` ${extra.cls}` : ''}${openId === id ? ' open' : ''}` });
     if (extra.pick) {
-      const pick = h('input', { type: 'checkbox', class: 'q-pick', title: 'Select to have Claude ask it as multiple choice', 'aria-label': `Select: ${label}` }) as HTMLInputElement;
+      const pick = h('input', { type: 'checkbox', class: 'q-pick', title: 'Select to have the agent ask it as multiple choice', 'aria-label': `Select: ${label}` }) as HTMLInputElement;
       pick.checked = p.selectedQuestions.has(id);
       pick.addEventListener('change', () => {
         if (pick.checked) p.selectedQuestions.add(id);
@@ -874,7 +875,7 @@ function renderQuestions(force = false): void {
   const groups: HTMLElement[] = [];
   if (asked.length) {
     groups.push(
-      h('div', { class: 'q-group asking' }, h('h3', {}, 'Claude is asking'), h('ul', { class: 'q-list' }, ...asked.flatMap(([id, qs]) => qs.map((q) => item(`ask:${id}`, q.question, { cls: 'asking' }))))),
+      h('div', { class: 'q-group asking' }, h('h3', {}, 'The agent is asking'), h('ul', { class: 'q-list' }, ...asked.flatMap(([id, qs]) => qs.map((q) => item(`ask:${id}`, q.question, { cls: 'asking' }))))),
     );
   }
   const chat = rows.filter((r) => !r.source);
@@ -896,7 +897,7 @@ function renderQuestions(force = false): void {
       h(
         'div',
         { class: 'q-actions' },
-        h('button', { class: 'button', type: 'button', id: 'q-ask', title: 'Claude asks the selected questions as multiple choice, with its recommendations', onclick: () => askAsChoices(p) }, 'Ask as choices'),
+        h('button', { class: 'button', type: 'button', id: 'q-ask', title: 'The agent asks the selected questions as multiple choice, with its recommendations', onclick: () => askAsChoices(p) }, 'Ask as choices'),
         h('button', { class: 'button', type: 'button', id: 'q-send', onclick: () => sendAnswers(p) }, 'Send drafts'),
       ),
     );
@@ -1258,7 +1259,7 @@ function renderDocs(): void {
       ? 'This task has no detail under it in the task file.'
       : item?.done
         ? `This ${what} has no spec or summary.`
-        : `No spec yet. Claude writes one before starting work on this ${what}.`;
+        : `No spec yet. The agent writes one before starting work on this ${what}.`;
     body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, message)));
   }
 
@@ -1787,7 +1788,7 @@ function renderSession(): void {
         'Standards',
         agentSkills && !claudeSkills
           ? `${agentSkills} in .agents/skills, loaded through the AGENTS.md table`
-          : `${claudeSkills} skills Claude can load on its own${agentSkills ? `, ${agentSkills} in .agents/skills` : ''}`,
+          : `${claudeSkills} skills the agent can load on its own${agentSkills ? `, ${agentSkills} in .agents/skills` : ''}`,
       ]);
     }
     if (fw.hooks.length) rows.push(['Hooks', fw.hooks.join(', ')]);
@@ -1807,13 +1808,13 @@ function renderSession(): void {
     if (s.mcpServers.length) rows.push(['MCP', s.mcpServers.map((m) => `${m.name} (${m.status})`).join(', ')]);
   }
   if (p?.lastTurn) rows.push(['Last turn', `${(p.lastTurn.durationMs / 1000).toFixed(1)}s, ${p.lastTurn.outputTokens.toLocaleString()} tokens out`]);
-  if (p && !s) rows.push(['', h('span', { class: 'muted' }, 'Claude Code starts with your first message.')]);
+  if (p && !s) rows.push(['', h('span', { class: 'muted' }, 'The agent starts with your first message.')]);
   dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
 }
 
 function closeProject(p: Proj): void {
   const working = p.busy || p.processes.some((x) => x.status === 'running');
-  if (working && !confirm(`Claude is still working in ${p.name}. Close it and stop that work?`)) return;
+  if (working && !confirm(`The agent is still working in ${p.name}. Close it and stop that work?`)) return;
   send({ type: 'close', project: p.dir });
 }
 
@@ -1834,7 +1835,7 @@ function projectMenu(p: Proj): MenuItem[] {
 function renderHeader(): void {
   const p = active;
   $('project-header').hidden = !p;
-  if (!p) return void (document.title = 'Claude Desk');
+  if (!p) return void (document.title = 'Slop Factory');
   // With a plan.md the name opens it as the project summary.
   const plan = planRel(p);
   $('project-name').replaceChildren(
@@ -1846,7 +1847,7 @@ function renderHeader(): void {
   $('project-path').title = p.dir;
   const fw = p.framework;
   $('framework-badge').textContent = fw?.agentsMd ? (fw.agentsSkills.length ? `AGENTS.md with ${fw.agentsSkills.length} standards` : 'AGENTS.md') : '';
-  document.title = `${p.name} – Claude Desk`;
+  document.title = `${p.name} – Slop Factory`;
 }
 
 // Claude Code's working indicator cycles through these glyphs.
@@ -1858,7 +1859,7 @@ function renderComposer(): void {
   const prompt = $<HTMLTextAreaElement>('prompt');
   const hasText = prompt.value.trim().length > 0;
   prompt.disabled = !p;
-  prompt.placeholder = p ? `Message Claude about ${p.name}` : 'Open a project to start';
+  prompt.placeholder = p ? `Message the agent about ${p.name}` : 'Open a project to start';
   const mode = $<HTMLSelectElement>('permission-mode');
   mode.disabled = !p;
   // Auto mode's safety checks run on Anthropic's servers, so it needs the Claude subscription.
@@ -1869,10 +1870,10 @@ function renderComposer(): void {
   if (p) mode.value = p.mode;
   mode.title =
     p?.mode === 'auto'
-      ? 'Claude approves routine actions itself and asks before risky ones'
+      ? 'Routine actions are approved automatically; risky ones ask first'
       : p?.mode === 'bypassPermissions'
         ? 'Every action runs without asking (--dangerously-skip-permissions). Auto mode is the safer hands-off choice.'
-        : 'How Claude asks before acting';
+        : 'How the agent asks before acting';
   const prov = $<HTMLSelectElement>('provider');
   prov.disabled = !p;
   prov.replaceChildren(...providerList.map((x) => h('option', { value: x.id }, x.name)));
@@ -1904,7 +1905,7 @@ function renderWelcome(): void {
       h(
         'div',
         { class: 'empty welcome' },
-        h('p', {}, 'Open a project folder to start. Claude picks up its AGENTS.md, skills and settings, and its task.md shows up on the left.'),
+        h('p', {}, 'Create or open a project to start. The agent picks up its AGENTS.md, skills and settings, and its task.md shows up on the left.'),
         h(
           'div',
           { class: 'welcome-actions' },
@@ -1935,7 +1936,7 @@ function activate(p: Proj | undefined): void {
   if (p) {
     p.unseen = false;
     prompt.value = p.draft;
-    store('claude-desk:active', p.dir);
+    store('slop-factory:active', p.dir);
     requestAnimationFrame(() => (p.transcript.scrollTop = p.transcript.scrollHeight));
     if (docsView && docsView.project !== p.dir) closeDocs();
   } else {
@@ -2240,7 +2241,7 @@ function wireProviderDialog(): void {
     if (!p) return;
     if (sel.value === p.providerId) return;
     const working = p.busy || p.processes.some((x) => x.status === 'running');
-    if (working && !confirm(`Switching model restarts Claude Code in ${p.name} and stops what it's doing. Switch anyway?`)) {
+    if (working && !confirm(`Switching model restarts the agent in ${p.name} and stops what it's doing. Switch anyway?`)) {
       sel.value = p.providerId;
       return;
     }
@@ -2266,7 +2267,7 @@ function newProjectDialog(): void {
   const form = $<HTMLFormElement>('new-project-form');
   form.reset();
   const parent = form.elements.namedItem('parent') as HTMLInputElement;
-  parent.value = load('claude-desk:new-project-parent') ?? '';
+  parent.value = load('slop-factory:new-project-parent') ?? '';
   $('np-log').hidden = true;
   $('np-log').textContent = '';
   $('np-error').hidden = true;
@@ -2303,7 +2304,7 @@ function wireNewProjectDialog(): void {
     const value = (n: string) => (form.elements.namedItem(n) as HTMLInputElement).value.trim();
     const git = (form.elements.namedItem('git') as HTMLInputElement).checked;
     creating = Math.random().toString(36).slice(2);
-    store('claude-desk:new-project-parent', value('parent'));
+    store('slop-factory:new-project-parent', value('parent'));
     $('np-error').hidden = true;
     $('np-log').hidden = false;
     $('np-log').textContent = '';
@@ -2351,7 +2352,7 @@ function applyTheme(theme: Theme): void {
   if (theme === 'system') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = theme;
 }
-applyTheme((load('claude-desk:theme') as Theme | null) ?? 'system');
+applyTheme((load('slop-factory:theme') as Theme | null) ?? 'system');
 
 let mcpList: McpEntry[] = [];
 let mcpEditing: McpEntry | undefined;
@@ -2375,7 +2376,7 @@ function mcpSummary(c: Record<string, unknown>): string {
 
 function renderSettings(): void {
   const p = active;
-  const theme = (load('claude-desk:theme') as Theme | null) ?? 'system';
+  const theme = (load('slop-factory:theme') as Theme | null) ?? 'system';
   $('theme-picker').querySelectorAll<HTMLInputElement>('input').forEach((r) => (r.checked = r.value === theme));
   $('model-for').textContent = p ? `The model ${p.name} uses. Switching starts a new conversation there.` : 'Open a project to choose its model.';
   $('local-models').replaceChildren(
@@ -2486,7 +2487,7 @@ function wireSettings(): void {
   $('settings-close').addEventListener('click', () => dialog.close());
   $('theme-picker').addEventListener('change', (ev) => {
     const theme = (ev.target as HTMLInputElement).value as Theme;
-    store('claude-desk:theme', theme === 'system' ? null : theme);
+    store('slop-factory:theme', theme === 'system' ? null : theme);
     applyTheme(theme);
   });
   $('add-local-model').addEventListener('click', () => openProviderDialog());
@@ -2642,6 +2643,7 @@ function submit(): void {
 }
 
 async function init(): Promise<void> {
+  document.querySelectorAll('.app-version').forEach((el) => (el.textContent = `v${__APP_VERSION__}`));
   renderAll();
   bridge = await createBridge();
   bridge.onEvent(onEvent);
@@ -2708,11 +2710,11 @@ async function init(): Promise<void> {
   const fromUrl = new URLSearchParams(location.search).getAll('project');
   let saved: string[] = [];
   try {
-    saved = JSON.parse(load('claude-desk:projects') ?? '[]');
+    saved = JSON.parse(load('slop-factory:projects') ?? '[]');
   } catch {
     saved = [];
   }
-  restoreActive = fromUrl.length ? fromUrl[fromUrl.length - 1] : load('claude-desk:active');
+  restoreActive = fromUrl.length ? fromUrl[fromUrl.length - 1] : load('slop-factory:active');
   for (const dir of new Set([...saved, ...fromUrl])) send({ type: 'open', projectDir: dir });
 }
 

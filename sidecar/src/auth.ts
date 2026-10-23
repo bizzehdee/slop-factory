@@ -11,7 +11,7 @@ const run = promisify(execFile);
  * signed-in app.
  */
 export function claudeBinary(): string {
-  if (process.env.CLAUDE_DESK_CLAUDE) return process.env.CLAUDE_DESK_CLAUDE;
+  if (process.env.SLOP_FACTORY_CLAUDE) return process.env.SLOP_FACTORY_CLAUDE;
   const req = createRequire(import.meta.url);
   const exe = process.platform === 'win32' ? '.exe' : '';
   const base = `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}`;

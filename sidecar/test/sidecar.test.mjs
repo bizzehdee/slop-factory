@@ -230,7 +230,7 @@ test('bug entries pick up Spec and Summary lines', () => {
   assert.deepEqual(f.bugs[1].links, []);
 });
 
-test('priorities toggle in click order and persist to .claude-desk/priorities.json', async () => {
+test('priorities toggle in click order and persist to .slop-factory/priorities.json', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'desk-'));
   try {
     const p = new Priorities(root);
@@ -239,9 +239,15 @@ test('priorities toggle in click order and persist to .claude-desk/priorities.js
     await p.toggle('B2');
     assert.deepEqual(await p.toggle('T7'), ['T5', 'B2', 'T7']);
     assert.deepEqual(await p.toggle('B2'), ['T5', 'T7']);
-    const saved = JSON.parse(await readFile(path.join(root, '.claude-desk/priorities.json'), 'utf8'));
+    const saved = JSON.parse(await readFile(path.join(root, '.slop-factory/priorities.json'), 'utf8'));
     assert.deepEqual(saved.order, ['T5', 'T7']);
     assert.deepEqual(await new Priorities(root).load(), ['T5', 'T7']);
+    // A queue saved by the app under its old name still loads.
+    const old = await mkdtemp(path.join(tmpdir(), 'desk-'));
+    await mkdir(path.join(old, '.claude-desk'));
+    await writeFile(path.join(old, '.claude-desk/priorities.json'), JSON.stringify({ order: ['B1'] }));
+    assert.deepEqual(await new Priorities(old).load(), ['B1']);
+    await rm(old, { recursive: true, force: true });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -289,7 +295,7 @@ test('local providers point every model role at the local server and drop cloud 
 
 test('provider store normalises addresses, remembers per-project choice, and resets on delete', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfg-'));
-  process.env.CLAUDE_DESK_CONFIG_DIR = dir;
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
   try {
     const { ProviderStore } = await import('../dist/providers.js');
     const store = new ProviderStore();
@@ -308,7 +314,7 @@ test('provider store normalises addresses, remembers per-project choice, and res
     assert.equal(again.forProject('/proj/a').id, 'subscription');
     await assert.rejects(again.upsert({ id: '', name: '', kind: 'ollama', baseUrl: 'localhost:11434', model: 'x' }), /http/);
   } finally {
-    delete process.env.CLAUDE_DESK_CONFIG_DIR;
+    delete process.env.SLOP_FACTORY_CONFIG_DIR;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -443,7 +449,7 @@ test('older-format start prompt works from the entry, not a spec', () => {
 
 test('permission mode is remembered per project, and the last choice becomes the default', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfg-'));
-  process.env.CLAUDE_DESK_CONFIG_DIR = dir;
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
   try {
     const { ProviderStore } = await import('../dist/providers.js');
     const store = new ProviderStore();
@@ -458,7 +464,7 @@ test('permission mode is remembered per project, and the last choice becomes the
     assert.equal(again.modeFor('/proj/b'), 'acceptEdits');
     assert.equal(again.modeFor('/proj/new'), 'acceptEdits', 'new projects start in the last mode chosen');
   } finally {
-    delete process.env.CLAUDE_DESK_CONFIG_DIR;
+    delete process.env.SLOP_FACTORY_CONFIG_DIR;
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -533,8 +539,8 @@ test('basic AGENTS.md is the task-tracking standard alone, a level down, with fe
 
 test('createProject makes the folder, a git repo with its remote, and the chosen framework', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'desk-new-'));
-  const prev = process.env.CLAUDE_DESK_CONFIG_DIR;
-  process.env.CLAUDE_DESK_CONFIG_DIR = path.join(root, 'config');
+  const prev = process.env.SLOP_FACTORY_CONFIG_DIR;
+  process.env.SLOP_FACTORY_CONFIG_DIR = path.join(root, 'config');
   try {
     const { execFileSync } = await import('node:child_process');
     // A stand-in framework copy, so the test needs no network (its pull fails and the copy is used).
@@ -560,8 +566,8 @@ test('createProject makes the folder, a git repo with its remote, and the chosen
     await assert.rejects(createProject({ name: 'Full', parent, git: false, framework: 'none' }, () => {}), /isn't empty/);
     await assert.rejects(createProject({ name: ' ', parent, git: false, framework: 'none' }, () => {}), /name/);
   } finally {
-    if (prev === undefined) delete process.env.CLAUDE_DESK_CONFIG_DIR;
-    else process.env.CLAUDE_DESK_CONFIG_DIR = prev;
+    if (prev === undefined) delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    else process.env.SLOP_FACTORY_CONFIG_DIR = prev;
     await rm(root, { recursive: true, force: true });
   }
 });

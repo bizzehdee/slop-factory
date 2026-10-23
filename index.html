@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Claude Desk</title>
+    <title>Slop Factory</title>
   </head>
   <body>
     <main class="layout">
@@ -47,6 +47,8 @@
           </div>
           <div id="tasks" class="pane-body"></div>
         </section>
+
+        <footer class="app-footer"><span class="app-name">Slop Factory</span> <span class="app-version"></span></footer>
       </aside>
 
       <section class="chat-pane" aria-label="Conversation">
@@ -56,12 +58,12 @@
         </div>
         <form id="composer" class="composer">
           <div class="composer-box">
-            <label for="prompt" class="visually-hidden">Message Claude</label>
+            <label for="prompt" class="visually-hidden">Message the agent</label>
             <textarea id="prompt" rows="2" placeholder="Open a project to start" disabled></textarea>
             <div class="composer-row">
               <label class="mode">
                 <span class="visually-hidden">Permission mode</span>
-                <select id="permission-mode" title="How Claude asks before acting" disabled>
+                <select id="permission-mode" title="How the agent asks before acting" disabled>
                   <option value="default">Ask before acting</option>
                   <option value="acceptEdits">Accept file edits</option>
                   <option value="auto">Auto mode</option>
@@ -70,7 +72,7 @@
                 </select>
               </label>
               <span class="composer-hint">Shift+Enter for a new line</span>
-              <button id="stop" type="button" class="round-button stop" title="Stop Claude" aria-label="Stop Claude" hidden>
+              <button id="stop" type="button" class="round-button stop" title="Stop the agent" aria-label="Stop the agent" hidden>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>
               </button>
               <button id="send" type="submit" class="round-button send" title="Send" aria-label="Send" disabled>
@@ -126,7 +128,7 @@
       <form id="provider-form" method="dialog">
         <h2 id="provider-dialog-title">Use a local model</h2>
         <p class="dialog-lead">
-          Claude Code keeps doing the work (tools, edits, subagents, your project rules). Only the model calls go to your
+          The agent keeps doing the work (tools, edits, subagents, your project rules). Only the model calls go to your
           server, which must speak Anthropic's Messages API. Ollama and llama.cpp's llama-server both do.
         </p>
         <fieldset class="kind-picker">
@@ -172,7 +174,7 @@
     <dialog id="settings-dialog" class="dialog settings" aria-labelledby="settings-title">
       <div class="dialog-body">
         <header class="settings-head">
-          <h2 id="settings-title">Settings</h2>
+          <h2 id="settings-title">Settings <small class="app-version"></small></h2>
           <button id="settings-close" class="icon-button" type="button" title="Close" aria-label="Close settings">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
           </button>
@@ -202,7 +204,7 @@
         <section class="settings-section" aria-labelledby="settings-mcp">
           <h3 id="settings-mcp">MCP servers</h3>
           <p class="settings-note">
-            Tools and data sources Claude Code connects to. A change applies the next time Claude Code starts in a project.
+            Tools and data sources the agent connects to. A change applies the next time the agent starts in a project.
             <button id="mcp-restart" class="link-button" type="button" hidden>Restart it now</button>
           </p>
           <div id="mcp-list"></div>

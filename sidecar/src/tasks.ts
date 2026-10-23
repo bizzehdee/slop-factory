@@ -4,6 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { BugEntry, DocLink, OpenQuestion, PhaseRow, TaskFile, TaskFileKind, TaskItem, TaskState } from './protocol.js';
 import { isQuestionDoc, parseOpenQuestions } from './questions.js';
+import { readProjectSettings } from './names.js';
 
 // "- [ ] text", "* [x] text", "1. [/] text" ...
 const CHECKBOX = /^(\s*)(?:[-*+]|\d+[.)])\s+\[([ xX/~-])\]\s+(.*)$/;
@@ -226,7 +227,7 @@ export interface TaskConfig {
 }
 
 // Defaults follow the agent-framework task-tracking standard (globs: task.md, tasks/*.md).
-// Override per project with "taskGlobs" in .claude-desk.json.
+// Override per project with "taskGlobs" in .slop-factory.json.
 export const DEFAULT_TASK_CONFIG: TaskConfig = {
   taskGlobs: ['task.md', 'tasks/*.md'],
   // Specs and summaries from the task-tracking standard. Watched so the board knows which exist.
@@ -236,7 +237,7 @@ export const DEFAULT_TASK_CONFIG: TaskConfig = {
 
 export async function loadTaskConfig(root: string): Promise<TaskConfig> {
   try {
-    const raw = JSON.parse(await fs.readFile(path.join(root, '.claude-desk.json'), 'utf8'));
+    const raw = await readProjectSettings(root);
     return {
       taskGlobs: Array.isArray(raw.taskGlobs) && raw.taskGlobs.length ? raw.taskGlobs : DEFAULT_TASK_CONFIG.taskGlobs,
       docGlobs: Array.isArray(raw.docGlobs) ? raw.docGlobs : DEFAULT_TASK_CONFIG.docGlobs,

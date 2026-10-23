@@ -1,9 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { ActionItem, ItemAction } from './protocol.js';
+import { LEGACY_PROJECT_DIR, PROJECT_DIR } from './names.js';
 
 // Prompts sent to Claude when you press a board button. Override any of them in
-// .claude-desk.json under "prompts". Placeholders: {ref} {title} {file} {specPath}
+// .slop-factory.json under "prompts". Placeholders: {ref} {title} {file} {specPath}
 // {summaryPath} {docs} {where}. They lean on the project's own standards (AGENTS.md and the
 // task-tracking standard) rather than restating them. {where} says where the work runs, from
 // whereNow or whereSubagent; a start prompt without it gets it added at the end.
@@ -88,18 +89,20 @@ export function promptFor(action: ItemAction, item: ActionItem, prompts: DeskPro
   return template.replace(/\{(\w+)\}/g, (all, k: string) => values[k] ?? all);
 }
 
-/** Priority order for a project, kept in .claude-desk/priorities.json beside your code. */
+/** Priority order for a project, kept in .slop-factory/priorities.json beside your code. */
 export class Priorities {
   private order: string[] = [];
   private file: string;
+  private legacyFile: string;
 
   constructor(root: string) {
-    this.file = path.join(root, '.claude-desk', 'priorities.json');
+    this.file = path.join(root, PROJECT_DIR, 'priorities.json');
+    this.legacyFile = path.join(root, LEGACY_PROJECT_DIR, 'priorities.json');
   }
 
   async load(): Promise<string[]> {
     try {
-      const raw = JSON.parse(await fs.readFile(this.file, 'utf8'));
+      const raw = JSON.parse(await fs.readFile(this.file, 'utf8').catch(() => fs.readFile(this.legacyFile, 'utf8')));
       this.order = Array.isArray(raw.order) ? raw.order.filter((k: unknown) => typeof k === 'string') : [];
     } catch {
       this.order = [];

@@ -1,4 +1,4 @@
-// Claude Desk sidecar: one Claude Code session and one task watcher per open project,
+// Slop Factory sidecar: one Claude Code session and one task watcher per open project,
 // all running at once. Speaks newline-delimited JSON on stdin (commands) and stdout (events).
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
@@ -14,6 +14,7 @@ import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
+import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -26,9 +27,9 @@ function emit(e: SidecarEvent): void {
 }
 
 // Make sure Claude Code uses your subscription login rather than a stray API key in the environment.
-if (process.env.ANTHROPIC_API_KEY && process.env.CLAUDE_DESK_ALLOW_API_KEY !== '1') {
+if (process.env.ANTHROPIC_API_KEY && process.env.SLOP_FACTORY_ALLOW_API_KEY !== '1') {
   delete process.env.ANTHROPIC_API_KEY;
-  process.stderr.write('[desk] Ignoring ANTHROPIC_API_KEY so usage goes through your Claude login. Set CLAUDE_DESK_ALLOW_API_KEY=1 to keep it.\n');
+  process.stderr.write('[desk] Ignoring ANTHROPIC_API_KEY so usage goes through your Claude login. Set SLOP_FACTORY_ALLOW_API_KEY=1 to keep it.\n');
 }
 
 // Events that make up the transcript are kept so a reloaded window can rebuild it.
@@ -69,12 +70,8 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
 }
 
 async function loadPrompts(dir: string): Promise<DeskPrompts> {
-  try {
-    const raw = JSON.parse(await fs.readFile(path.join(dir, '.claude-desk.json'), 'utf8'));
-    return raw?.prompts && typeof raw.prompts === 'object' ? raw.prompts : {};
-  } catch {
-    return {};
-  }
+  const raw = await readProjectSettings(dir);
+  return raw.prompts && typeof raw.prompts === 'object' ? (raw.prompts as DeskPrompts) : {};
 }
 
 /** Send a reopened window everything it needs to rebuild this project's view. */
@@ -137,7 +134,7 @@ function restartSession(p: Project): void {
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
-  p.out({ type: 'notice', level: 'info', text: 'Restarted Claude Code. This starts a new conversation.' });
+  p.out({ type: 'notice', level: 'info', text: 'Restarted the agent. This starts a new conversation.' });
 }
 
 /** Restart a project's Claude Code session on another provider. The task board keeps running. */
@@ -340,7 +337,10 @@ function sdkVersion(): string {
 }
 
 // Commands that arrive while the provider list loads wait for it.
-const started = providers.load().then(() => {
-  emit({ type: 'ready', sdkVersion: sdkVersion() });
-  emit({ type: 'providers', list: providers.list() });
-});
+const started = migrateConfigDir()
+  .catch((err) => process.stderr.write(`[desk] Couldn't move ~/.claude-desk: ${String(err)}\n`))
+  .then(() => providers.load())
+  .then(() => {
+    emit({ type: 'ready', sdkVersion: sdkVersion(), appVersion: appVersion() });
+    emit({ type: 'providers', list: providers.list() });
+  });

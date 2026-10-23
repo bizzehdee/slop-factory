@@ -1,5 +1,5 @@
 {
-  "name": "claude-desk-sidecar",
+  "name": "slop-factory-sidecar",
   "version": "0.1.0",
   "main": "dist/index.js",
   "scripts": {
@@ -18,5 +18,6 @@
     "typescript": "^7.0.2"
   },
   "private": true,
-  "type": "module"
+  "type": "module",
+  "license": "BSD-3-Clause"
 }

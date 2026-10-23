@@ -1,0 +1,94 @@
+name: Release
+
+# Pushing a tag vX.Y.Z builds Slop Factory X.Y.Z for Windows, Linux and macOS and publishes a
+# GitHub release with the installers.
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  create:
+    name: Create the release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+      # A draft until every platform has uploaded, so nobody downloads a half-finished release.
+      - id: release
+        run: |
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Slop Factory ${{ steps.version.outputs.version }}" --generate-notes
+          # Drafts can't be looked up by tag, so the build jobs upload by id.
+          echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: create
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows amd64
+            os: windows-latest
+            args: --bundles nsis,msi
+          - name: Linux amd64
+            os: ubuntu-22.04
+            args: --bundles deb,rpm,appimage
+          - name: macOS universal
+            os: macos-latest
+            args: --target universal-apple-darwin --bundles app,dmg
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Linux libraries for Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Set the version from the tag
+        shell: bash
+        run: node scripts/set-version.mjs "${{ needs.create.outputs.version }}"
+      - run: npm ci
+      - run: npm --prefix sidecar ci
+      - name: Both Mac engines for the universal app
+        if: runner.os == 'macOS'
+        run: node scripts/fetch-sdk-binaries.mjs darwin-x64 darwin-arm64
+      - name: Drop the musl engine from the glibc Linux packages
+        if: runner.os == 'Linux'
+        run: rm -rf sidecar/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          releaseId: ${{ needs.create.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+  publish:
+    name: Publish the release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+        env:
+          GH_TOKEN: ${{ github.token }}

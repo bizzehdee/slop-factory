@@ -24,9 +24,9 @@ interface DeskState {
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 
-export function configDir(): string {
-  return process.env.CLAUDE_DESK_CONFIG_DIR || path.join(os.homedir(), '.claude-desk');
-}
+import { appVersion, configDir } from './names.js';
+
+export { configDir };
 
 export class ProviderStore {
   private state: DeskState = { providers: [], projectProvider: {}, projectMode: {} };
@@ -137,7 +137,7 @@ export function sessionSettings(p: ProviderConfig): { env?: Record<string, strin
     ANTHROPIC_SMALL_FAST_MODEL: small,
     CLAUDE_CODE_SUBAGENT_MODEL: p.model,
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-    CLAUDE_AGENT_SDK_CLIENT_APP: 'claude-desk/0.1.0',
+    CLAUDE_AGENT_SDK_CLIENT_APP: `slop-factory/${appVersion()}`,
   };
   // Don't let subscription credentials or an API key override the local server.
   delete env.ANTHROPIC_API_KEY;

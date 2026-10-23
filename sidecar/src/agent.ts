@@ -145,7 +145,7 @@ export class AgentSession {
       await this.q?.setPermissionMode(mode);
       this.permissionMode = mode;
     } catch (err) {
-      this.emit({ type: 'notice', level: 'warn', text: `Claude Code didn't switch to ${mode === 'auto' ? 'auto mode' : mode}: ${err instanceof Error ? err.message : String(err)}` });
+      this.emit({ type: 'notice', level: 'warn', text: `The agent didn't switch to ${mode === 'auto' ? 'auto mode' : mode}: ${err instanceof Error ? err.message : String(err)}` });
       this.permissionMode = previous;
     }
     return this.permissionMode;
@@ -200,7 +200,7 @@ export class AgentSession {
     try {
       for await (const msg of this.q!) this.handle(msg);
     } catch (err) {
-      if (!this.abort.signal.aborted) this.emit({ type: 'notice', level: 'error', text: `Claude Code session ended: ${String(err)}` });
+      if (!this.abort.signal.aborted) this.emit({ type: 'notice', level: 'error', text: `The agent session ended: ${String(err)}` });
     } finally {
       this.pendingTurns = 0;
       this.emit({ type: 'busy', busy: false });
@@ -233,7 +233,7 @@ export class AgentSession {
             this.emit({ type: 'toolUse', id, name: String(block.name), input: block.input, parent });
           }
         }
-        if (msg.error) this.emit({ type: 'notice', level: 'error', text: `Claude reported an error: ${msg.error}` });
+        if (msg.error) this.emit({ type: 'notice', level: 'error', text: `The agent reported an error: ${msg.error}` });
         return;
       }
 
@@ -294,10 +294,10 @@ export class AgentSession {
           const asked = this.permissionMode;
           this.permissionMode = msg.permissionMode as PermissionModeName;
           this.emit({ type: 'mode', mode: this.permissionMode });
-          if (asked === 'auto') this.emit({ type: 'notice', level: 'warn', text: `Auto mode isn't available for this session, so Claude Code started in "${msg.permissionMode}" mode instead.` });
+          if (asked === 'auto') this.emit({ type: 'notice', level: 'warn', text: `Auto mode isn't available for this session, so the agent started in "${msg.permissionMode}" mode instead.` });
         }
         if (this.provider.kind === 'subscription' && msg.apiKeySource !== 'oauth' && msg.apiKeySource !== 'none') {
-          this.emit({ type: 'notice', level: 'warn', text: `Claude Code is authenticating with "${msg.apiKeySource}", not your subscription login. Usage may be billed to the API.` });
+          this.emit({ type: 'notice', level: 'warn', text: `The agent is signed in with "${msg.apiKeySource}", not your subscription login. Usage may be billed to the API.` });
         }
         return;
       case 'background_tasks_changed':

@@ -1,4 +1,4 @@
-# Claude Desk
+# Slop Factory
 
 A desktop app for working with Claude Code across several projects that use
 [agent-framework](https://github.com/bizzehdee/agent-framework). It looks and feels like the
@@ -68,7 +68,7 @@ have checkbox tasks, the board reads it in the older layout:
   formatted markdown, since this format has no separate spec files.
 - **Start now** and **Start in subagent** tell Claude to work from that entry: read its References, then build its
   Deliverable within its Scope until every acceptance criterion is met. Override it with
-  `prompts.startLegacyTask` in `.claude-desk.json`.
+  `prompts.startLegacyTask` in `.slop-factory.json`.
 
 ## Specs, summaries and priorities
 
@@ -78,7 +78,7 @@ a task line or the `Spec:` / `Summary:` lines on a bug entry, and falls back to
 `summaries/summary-BUG-<n>.md`. Finished work opens on its summary; anything else on its spec.
 
 Priorities aren't part of the standard, and editing task lines would count as a revision under it,
-so they live in `.claude-desk/priorities.json` in the project, keyed by `T<n>` / `B<n>`. Commit it
+so they live in `.slop-factory/priorities.json` in the project, keyed by `T<n>` / `B<n>`. Commit it
 to share the queue, or add it to `.gitignore`.
 
 ## Settings
@@ -114,7 +114,7 @@ any Claude login or API key from that session's environment so nothing reaches A
 models need tool calling and a long context (32k tokens or more) to do agentic work well.
 Switching provider restarts that project's Claude Code session and starts a new conversation.
 
-Providers are saved in `~/.claude-desk/config.json`, along with which project uses which and each
+Providers are saved in `~/.slop-factory/config.json`, along with which project uses which and each
 project's permission mode.
 
 ## How it works
@@ -189,7 +189,7 @@ npm test
 
 On your subscription, the sidecar removes `ANTHROPIC_API_KEY` from its environment before
 starting Claude Code, so a stray key can't quietly switch you to API billing. Set
-`CLAUDE_DESK_ALLOW_API_KEY=1` if you do want to use a key. The Session panel shows which login
+`SLOP_FACTORY_ALLOW_API_KEY=1` if you do want to use a key. The Session panel shows which login
 Claude Code actually used and warns you if it isn't your subscription.
 
 Anthropic's rules for subscription use in your own tools changed several times in 2026. A personal
@@ -198,7 +198,7 @@ app on your own machine using your own login is the supported case; check the
 
 ## Settings
 
-A `.claude-desk.json` in a project can change which files are read and the prompts the board
+A `.slop-factory.json` in a project can change which files are read and the prompts the board
 buttons send:
 
 ```json
@@ -230,11 +230,11 @@ Environment variables:
 
 | Variable | Effect |
 |---|---|
-| `CLAUDE_DESK_NODE` | Full path to `node`. Useful on macOS, where apps don't inherit your shell `PATH`. |
-| `CLAUDE_DESK_SIDECAR` | Path to a different sidecar `index.js`. |
-| `CLAUDE_DESK_CONFIG_DIR` | Where providers are saved instead of `~/.claude-desk`. |
-| `CLAUDE_DESK_ALLOW_API_KEY` | `1` keeps `ANTHROPIC_API_KEY` instead of removing it. |
-| `CLAUDE_DESK_CLAUDE` | Path to the `claude` binary used to check and make the sign-in, instead of the one bundled with the SDK. |
+| `SLOP_FACTORY_NODE` | Full path to `node`. Useful on macOS, where apps don't inherit your shell `PATH`. |
+| `SLOP_FACTORY_SIDECAR` | Path to a different sidecar `index.js`. |
+| `SLOP_FACTORY_CONFIG_DIR` | Where providers are saved instead of `~/.slop-factory`. |
+| `SLOP_FACTORY_ALLOW_API_KEY` | `1` keeps `ANTHROPIC_API_KEY` instead of removing it. |
+| `SLOP_FACTORY_CLAUDE` | Path to the `claude` binary used to check and make the sign-in, instead of the one bundled with the SDK. |
 
 ## Known gaps
 

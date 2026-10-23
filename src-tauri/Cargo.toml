@@ -1,11 +1,13 @@
 [package]
-name = "claude-desk"
+name = "slop-factory"
 version = "0.1.0"
-description = "A desktop cockpit for Claude Code with your own agent framework"
+description = "A desktop app for running coding agents on your projects, with a live task board"
+license = "BSD-3-Clause"
+authors = ["Darren Horrocks"]
 edition = "2021"
 
 [lib]
-name = "claude_desk_lib"
+name = "slop_factory_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

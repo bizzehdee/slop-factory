@@ -251,7 +251,7 @@ export type ProjectEvent =
 
 /** Events not tied to one project. */
 export type GlobalEvent =
-  | { type: 'ready'; sdkVersion: string }
+  | { type: 'ready'; sdkVersion: string; appVersion: string }
   | { type: 'providers'; list: ProviderConfig[] }
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
   | { type: 'editors'; list: EditorInfo[] }

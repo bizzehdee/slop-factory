@@ -16,9 +16,9 @@ struct Sidecar {
 }
 
 /// Where the sidecar's compiled entry point lives.
-/// Override with CLAUDE_DESK_SIDECAR; in dev builds use the repo copy; in release, the bundled resource.
+/// Override with SLOP_FACTORY_SIDECAR; in dev builds use the repo copy; in release, the bundled resource.
 fn sidecar_entry(app: &AppHandle) -> Result<PathBuf, String> {
-    if let Ok(p) = std::env::var("CLAUDE_DESK_SIDECAR") {
+    if let Ok(p) = std::env::var("SLOP_FACTORY_SIDECAR") {
         return Ok(PathBuf::from(p));
     }
     if cfg!(debug_assertions) {
@@ -50,9 +50,9 @@ fn sidecar_start(app: AppHandle, state: State<'_, Sidecar>) -> Result<(), String
     }
 
     let entry = sidecar_entry(&app)?;
-    // Node must be on PATH (or set CLAUDE_DESK_NODE). GUI apps on macOS don't inherit
+    // Node must be on PATH (or set SLOP_FACTORY_NODE). GUI apps on macOS don't inherit
     // your shell PATH, so the env var is the reliable option there.
-    let node = std::env::var("CLAUDE_DESK_NODE").unwrap_or_else(|_| "node".into());
+    let node = std::env::var("SLOP_FACTORY_NODE").unwrap_or_else(|_| "node".into());
 
     let mut cmd = Command::new(&node);
     cmd.arg(&entry)
@@ -68,7 +68,7 @@ fn sidecar_start(app: AppHandle, state: State<'_, Sidecar>) -> Result<(), String
     }
 
     let mut child = cmd.spawn().map_err(|e| {
-        format!("Couldn't start the sidecar with `{node}` ({e}). Install Node 18+ or set CLAUDE_DESK_NODE to its full path.")
+        format!("Couldn't start the sidecar with `{node}` ({e}). Install Node 18+ or set SLOP_FACTORY_NODE to its full path.")
     })?;
 
     let stdout = child.stdout.take().ok_or("sidecar has no stdout")?;
@@ -115,7 +115,7 @@ pub fn run() {
         .manage(Sidecar::default())
         .invoke_handler(tauri::generate_handler![sidecar_start, sidecar_send])
         .build(tauri::generate_context!())
-        .expect("error while building Claude Desk");
+        .expect("error while building Slop Factory");
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
