@@ -252,7 +252,12 @@ test('action prompts follow the spec/summary naming and honour overrides', () =>
   assert.match(start, /Start work on T5 \(Scheduler\)/);
   assert.match(start, /specs\/spec-TASK-5\.md/);
   assert.match(start, /summaries\/summary-TASK-5\.md/);
-  assert.match(start, /background subagent/);
+  assert.match(start, /here in this conversation/);
+  assert.doesNotMatch(start, /subagent/);
+  const parallel = promptFor('startSubagent', task, {});
+  assert.match(parallel, /background subagent with worktree isolation/);
+  assert.match(parallel, /isolation: "worktree"/);
+  assert.doesNotMatch(parallel, /\{where\}/);
 
   const bug = { key: 'B2', kind: 'bug', id: 'B2', title: 'Export fails', rel: 'tasks/bugs.md', done: true, spec: 'specs/spec-BUG-2.md', summary: 'summaries/summary-BUG-2.md' };
   assert.match(promptFor('reinvestigate', bug, {}), /Read specs\/spec-BUG-2\.md and summaries\/summary-BUG-2\.md/);
@@ -413,6 +418,17 @@ test('the root plan.md is watched as a doc, in any case, even with custom docGlo
     await w?.stop();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test('phases and older sections start as a whole, and old overrides still say where to run', () => {
+  const phase = { key: 'P2', kind: 'phase', title: 'Export', rel: 'tasks/task_phase_2.md', phase: '2', done: false };
+  assert.match(promptFor('start', phase, {}), /^Work through phase 2 \(Export\), tasks\/task_phase_2\.md\./);
+  assert.match(promptFor('startSubagent', phase, {}), /worktree/);
+  const section = { key: 'section:Core', kind: 'phase', title: 'Core', rel: 'TASK.md', done: false, legacy: true };
+  assert.match(promptFor('start', section, {}), /^Work through the "Core" section of TASK\.md\./);
+  assert.match(promptFor('summarise', { ...section, done: true }, {}), /the entries in its section of TASK\.md/);
+  const task = { key: 'T5', kind: 'task', id: 'T5', title: 'Scheduler', rel: 'tasks/task_phase_2.md', done: false };
+  assert.equal(promptFor('startSubagent', task, { startTask: 'Do {ref}.', whereSubagent: 'Elsewhere.' }), 'Do T5.\n\nElsewhere.');
 });
 
 test('older-format start prompt works from the entry, not a spec', () => {

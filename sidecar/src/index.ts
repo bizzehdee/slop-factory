@@ -111,6 +111,8 @@ async function openProject(dirIn: string, requested?: PermissionModeName): Promi
   tasks.start();
   session.processes.clear();
   session.start();
+  // The window treats a project as replaying until this arrives, as it does for a reopened one.
+  out({ type: 'replayDone' });
 }
 
 async function closeProject(dir: string): Promise<void> {
@@ -182,6 +184,10 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'runAction': {
       const p = need(cmd.project);
       p.session.send(promptFor(cmd.action, cmd.item, p.prompts), { kind: cmd.action, key: cmd.item.key });
+      // Once something starts it is no longer waiting in the priority queue.
+      if ((cmd.action === 'start' || cmd.action === 'startSubagent') && p.priorities.list().includes(cmd.item.key)) {
+        p.out({ type: 'priorities', order: await p.priorities.remove(cmd.item.key) });
+      }
       return;
     }
     case 'setProvider':

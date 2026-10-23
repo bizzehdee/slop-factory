@@ -18,21 +18,23 @@ export interface ProviderConfig {
 // ---------- UI -> sidecar ----------
 // Every command except "open" names the project it is for (its absolute folder path).
 
-/** Something on the board a button can act on: a task line or a bug entry. */
+/** Something on the board a button can act on: a task line, a bug entry or a phase. */
 export interface ActionItem {
-  key: string; // "T5", "B2", or "<file>#<line text>" for an unnumbered task
-  kind: 'task' | 'bug';
+  key: string; // "T5", "B2", "P2", "section:<name>", or "<file>#<line text>" for an unnumbered task
+  kind: 'task' | 'bug' | 'phase';
   id?: string;
   title: string;
-  rel: string; // file the item lives in
-  phase?: string; // phase number, for tasks
+  rel: string; // file the item lives in (a phase's own document, or the file listing it)
+  phase?: string; // phase number, for tasks and phases
   done: boolean;
-  legacy?: boolean; // from an older-format TASK.md: the entry itself holds the detail
+  legacy?: boolean; // from an older-format TASK.md: the entry itself holds the detail (a phase is one of its sections)
   spec?: string; // rel path, when the spec exists
   summary?: string; // rel path, when the summary exists
 }
 
-export type ItemAction = 'start' | 'reinvestigate' | 'summarise';
+// start: now, in the project's own conversation. startSubagent: in a background subagent working
+// in its own git worktree, in parallel with the conversation.
+export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
 
 export type UiCommand =
   | { type: 'open'; projectDir: string; permissionMode?: PermissionModeName }

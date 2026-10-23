@@ -11,6 +11,7 @@ import type {
   DocContent,
   FrameworkInfo,
   ItemAction,
+  PhaseRow,
   PermissionModeName,
   ProcessInfo,
   ProjectEvent,
@@ -91,6 +92,7 @@ interface Proj {
   draft: string;
   unseen: boolean;
   replaying: boolean;
+  holdQueue: boolean; // set by Stop: the queue waits until you start something again
 }
 
 const projects = new Map<string, Proj>();
@@ -141,6 +143,7 @@ function newProject(dir: string, name: string): Proj {
     draft: '',
     unseen: false,
     replaying: false,
+    holdQueue: false,
   };
 }
 
@@ -215,9 +218,83 @@ function bugItem(p: Proj, file: TaskFile, b: BugEntry): BoardItem {
   };
 }
 
+// Phases (and older TASK.md sections) can be queued and started like tasks.
+
+const PHASE_PREFIX = /^Phase\s+\d+\s*[:\-–]\s*/i;
+
+function phaseDocFor(row: PhaseRow, phases: TaskFile[]): TaskFile | undefined {
+  return (row.doc && phases.find((ph) => ph.rel === row.doc)) || phases.find((ph) => ph.phaseNumber === row.number);
+}
+
+function phaseItem(row: PhaseRow, doc: TaskFile | undefined, indexRel: string): BoardItem {
+  const cls = phaseStatusClass(row.status);
+  return {
+    key: `P${row.number}`,
+    kind: 'phase',
+    title: doc?.title.replace(PHASE_PREFIX, '') || row.goal || `Phase ${row.number}`,
+    rel: doc?.rel ?? indexRel,
+    phase: row.number,
+    done: cls === 'done' || cls === 'dropped',
+    state: cls === 'done' ? 'done' : cls === 'doing' ? 'doing' : cls === 'dropped' ? 'cancelled' : 'todo',
+    line: 0,
+    docLinks: doc ? [{ label: 'Phase', rel: doc.rel }] : [],
+  };
+}
+
+interface LegacySection {
+  name: string;
+  items: TaskItem[];
+}
+
+function legacySections(file: TaskFile): LegacySection[] {
+  const sections: LegacySection[] = [];
+  for (const it of file.items) {
+    const name = it.section ?? 'Tasks';
+    let sec = sections[sections.length - 1];
+    if (!sec || sec.name !== name) sections.push((sec = { name, items: [] }));
+    sec.items.push(it);
+  }
+  return sections;
+}
+
+function legacyStatus(items: TaskItem[]): string {
+  const top = items.filter((i) => i.depth === 0 && i.state !== 'cancelled');
+  if (top.length && top.every((i) => i.state === 'done')) return 'done';
+  if (items.some((i) => i.state === 'done' || i.state === 'doing')) return 'in progress';
+  return 'planned';
+}
+
+function sectionItem(file: TaskFile, sec: LegacySection): BoardItem {
+  const status = legacyStatus(sec.items);
+  return {
+    key: `section:${sec.name}`,
+    kind: 'phase',
+    title: sec.name,
+    rel: file.rel,
+    legacy: true,
+    done: status === 'done',
+    state: status === 'done' ? 'done' : status === 'in progress' ? 'doing' : 'todo',
+    line: 0,
+    docLinks: [],
+  };
+}
+
+/** The short label shown before an item's title: T5, B2, P2. */
+const itemRef = (it: BoardItem) => it.id ?? (it.kind === 'phase' ? (it.phase ? `P${it.phase}` : '§') : '');
+
 function allItems(p: Proj): Map<string, BoardItem> {
   const map = new Map<string, BoardItem>();
+  const index = p.tasks.find((f) => f.kind === 'index');
+  const phases = p.tasks.filter((f) => f.kind === 'phase');
+  for (const row of index?.phases ?? []) {
+    const it = phaseItem(row, phaseDocFor(row, phases), index!.rel);
+    map.set(it.key, it);
+  }
   for (const f of p.tasks) {
+    if (f.kind === 'legacy') for (const sec of legacySections(f)) {
+      const it = sectionItem(f, sec);
+      map.set(it.key, it);
+    }
     if (f.kind === 'phase' || f.kind === 'other' || f.kind === 'legacy') for (const t of f.items) {
       const it = taskItem(p, f, t);
       map.set(it.key, it);
@@ -437,7 +514,7 @@ function notice(p: Proj, level: 'info' | 'warn' | 'error', text: string): void {
   appendEntry(p, h('div', { class: `notice ${level}`, role: level === 'error' && !p.replaying ? 'alert' : undefined }, text));
 }
 
-const ACTION_LABEL: Record<ItemAction, string> = { start: 'Start', reinvestigate: 'Reinvestigate', summarise: 'Summarise' };
+const ACTION_LABEL: Record<ItemAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise' };
 
 function userMessage(p: Proj, text: string, action?: { kind: ItemAction; key: string }): void {
   p.transcript.querySelector('.empty')?.remove();
@@ -452,6 +529,11 @@ function userMessage(p: Proj, text: string, action?: { kind: ItemAction; key: st
     return appendEntry(p, el);
   }
   appendEntry(p, h('div', { class: 'msg user' }, text));
+}
+
+/** Your own message always brings the conversation to the bottom, wherever you had scrolled. */
+function scrollToEnd(p: Proj): void {
+  if (!p.replaying) p.transcript.scrollTop = p.transcript.scrollHeight;
 }
 
 // ---------- menus ----------
@@ -515,23 +597,66 @@ document.addEventListener('pointerdown', (ev) => {
   if (!menuEl.hidden && !menuEl.contains(ev.target as Node) && !menuAnchor?.contains(ev.target as Node)) closeMenu(false);
 });
 
+function progressLabel(item: BoardItem): string | undefined {
+  if (item.kind === 'phase') return item.docLinks.length ? 'Show phase document' : undefined;
+  return item.legacy && !item.spec && !item.summary ? 'Show details' : 'Show progress';
+}
+
+const PRIORITISE_LABEL = 'Prioritise (start after current work)';
+
 function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
-  const prioritised = p.priorities.includes(item.key);
-  const items: MenuItem[] = [{ label: prioritised ? 'Remove priority' : 'Prioritise', run: () => send({ type: 'togglePriority', project: p.dir, key: item.key }) }];
-  const progressLabel = item.legacy && !item.spec && !item.summary ? 'Show details' : 'Show progress';
+  const queued = p.priorities.includes(item.key);
+  const items: MenuItem[] = [];
+  const progress = progressLabel(item);
   if (!item.done) {
-    items.push({ label: item.kind === 'bug' ? 'Start fix with a subagent' : 'Start with a subagent', run: () => runAction(p, 'start', item) });
-    items.push({ label: progressLabel, run: () => showProgress(p, item) });
+    items.push({ label: queued ? 'Remove from queue' : PRIORITISE_LABEL, run: () => prioritise(p, item) });
+    items.push({ label: 'Start now', run: () => runAction(p, 'start', item) });
+    items.push({ label: 'Start in subagent (own worktree)', run: () => runAction(p, 'startSubagent', item) });
+    if (progress) items.push({ label: progress, run: () => showProgress(p, item) });
   } else {
-    items.push({ label: progressLabel, run: () => showProgress(p, item) });
+    if (queued) items.push({ label: 'Remove from queue', run: () => prioritise(p, item) });
+    if (progress) items.push({ label: progress, run: () => showProgress(p, item) });
     items.push({ label: 'Summarise work done', run: () => runAction(p, 'summarise', item) });
-    items.push({ label: 'Reinvestigate with a subagent', run: () => runAction(p, 'reinvestigate', item) });
+    if (item.kind !== 'phase') items.push({ label: 'Reinvestigate with a subagent', run: () => runAction(p, 'reinvestigate', item) });
   }
   return items;
 }
 
 function runAction(p: Proj, action: ItemAction, item: BoardItem): void {
+  if (action === 'start' || action === 'startSubagent') p.holdQueue = false;
   send({ type: 'runAction', project: p.dir, action, item: toActionItem(item) });
+}
+
+// ---------- priority queue: prioritised items start, in order, whenever Claude is free ----------
+
+const isFree = (p: Proj) => !p.busy && !p.pending.size;
+
+function nextQueued(p: Proj, skip?: string): BoardItem | undefined {
+  const items = allItems(p);
+  for (const key of p.priorities) {
+    const it = items.get(key);
+    if (it && !it.done && key !== skip) return it;
+  }
+  return undefined;
+}
+
+/** Queue an item to start after the current work, or take it off the queue. */
+function prioritise(p: Proj, item: BoardItem): void {
+  if (p.priorities.includes(item.key)) return send({ type: 'togglePriority', project: p.dir, key: item.key });
+  const ahead = isFree(p) ? nextQueued(p, item.key) : undefined;
+  // Nothing running and nothing queued ahead of it: there's no current work to wait for.
+  if (isFree(p) && !ahead) return runAction(p, 'start', item);
+  send({ type: 'togglePriority', project: p.dir, key: item.key });
+  if (ahead) runAction(p, 'start', ahead);
+}
+
+/** Claude just finished a turn: start the next queued item, unless you stopped it or it failed. */
+function startQueued(p: Proj): void {
+  const held = p.holdQueue || !!p.lastTurn?.isError;
+  p.holdQueue = false;
+  if (held || !isFree(p)) return;
+  const next = nextQueued(p);
+  if (next) runAction(p, 'start', next);
 }
 
 function moreButton(p: Proj, item: BoardItem): HTMLButtonElement {
@@ -621,7 +746,7 @@ function renderDocs(): void {
   const p = projects.get(docsView.project);
   const isPlan = docsView.key === PLAN_KEY;
   const item = p && !isPlan ? allItems(p).get(docsView.key) : undefined;
-  $('docs-ref').textContent = isPlan ? 'Plan' : item?.id ?? '';
+  $('docs-ref').textContent = isPlan ? 'Plan' : item ? itemRef(item) : '';
   $('docs-title').textContent = isPlan ? p?.name ?? '' : item?.title ?? docsView.key;
 
   const docs = docsView.docs;
@@ -657,8 +782,10 @@ function renderDocs(): void {
   } else if (isPlan) {
     body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, p && planRel(p) ? 'Loading plan.md…' : 'This project has no plan.md.')));
   } else {
-    const what = item?.kind === 'bug' ? 'bug' : 'task';
-    const message = item?.legacy
+    const what = item?.kind ?? 'task';
+    const message = item?.kind === 'phase'
+      ? 'This phase has no document yet.'
+      : item?.legacy
       ? 'This task has no detail under it in the task file.'
       : item?.done
         ? `This ${what} has no spec or summary.`
@@ -669,8 +796,12 @@ function renderDocs(): void {
   const actions = $('docs-actions');
   actions.replaceChildren();
   if (p && item) {
-    if (!item.done) actions.append(h('button', { class: 'button primary', type: 'button', onclick: () => runAction(p, 'start', item) }, item.kind === 'bug' ? 'Start fix with a subagent' : 'Start with a subagent'));
-    else {
+    if (!item.done) {
+      actions.append(h('button', { class: 'button primary', type: 'button', onclick: () => runAction(p, 'start', item) }, 'Start now'));
+      actions.append(h('button', { class: 'button', type: 'button', title: 'A background subagent does the work in its own git worktree', onclick: () => runAction(p, 'startSubagent', item) }, 'Start in subagent'));
+      const queued = p.priorities.includes(item.key);
+      actions.append(h('button', { class: 'button quiet', type: 'button', onclick: () => prioritise(p, item) }, queued ? 'Remove from queue' : 'Prioritise'));
+    } else {
       actions.append(h('button', { class: 'button', type: 'button', onclick: () => runAction(p, 'summarise', item) }, 'Summarise work done'));
       actions.append(h('button', { class: 'button', type: 'button', onclick: () => runAction(p, 'reinvestigate', item) }, 'Reinvestigate'));
     }
@@ -791,18 +922,30 @@ function bugRow(p: Proj, file: TaskFile, b: BugEntry): HTMLElement {
   );
 }
 
+/** A phase's head row with its ⋯ menu beside it (a button can't hold another button). */
+function phaseTop(p: Proj, item: BoardItem | undefined, head: HTMLElement): HTMLElement {
+  if (!item) return head;
+  if (p.priorities.includes(item.key)) head.querySelector('.phase-goal')?.append(flag());
+  return h('div', { class: 'phase-top' }, head, moreButton(p, item));
+}
+
 function renderPriorities(p: Proj): void {
   const section = $('priorities-section');
   const items = allItems(p);
   const queued = p.priorities.map((k) => items.get(k)).filter((x): x is BoardItem => !!x);
   section.hidden = !queued.length;
-  $('priorities-count').textContent = queued.length ? `${queued.filter((q) => !q.done).length} open` : '';
+  const open = queued.filter((q) => !q.done).length;
+  const next = isFree(p) ? nextQueued(p) : undefined;
+  $('priorities-count').replaceChildren(
+    open ? `${open} queued` : '',
+    next ? h('button', { class: 'link-button', type: 'button', title: `Start ${itemRef(next) || next.title} now`, onclick: () => runAction(p, 'start', next) }, 'Start next') : '',
+  );
   $('priorities').replaceChildren(
     ...queued.map((it) =>
       h(
         'li',
         { class: `priority kind-${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
-        h('span', { class: 'item-id' }, it.id ?? '·'),
+        h('span', { class: 'item-id' }, itemRef(it) || '·'),
         h('button', { class: 'priority-title', type: 'button', onclick: () => showProgress(p, it), title: 'Show progress' }, it.title),
         h('span', { class: 'priority-state' }, it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : ''),
         moreButton(p, it),
@@ -837,8 +980,6 @@ function renderTasks(): void {
     return;
   }
 
-  const byDoc = new Map(phases.map((ph) => [ph.rel, ph]));
-  const byNum = new Map(phases.map((ph) => [ph.phaseNumber ?? '', ph]));
   const rows = index?.phases ?? [];
   const currentRow = rows.find((r) => !['done', 'dropped'].includes(phaseStatusClass(r.status)));
   if (!p.userToggled && currentRow) p.expanded = new Set([currentRow.number]);
@@ -846,7 +987,7 @@ function renderTasks(): void {
   const spine = h('ol', { class: 'spine' });
   const shown = new Set<string>();
   for (const row of rows) {
-    const doc = (row.doc && byDoc.get(row.doc)) || byNum.get(row.number);
+    const doc = phaseDocFor(row, phases);
     if (doc) shown.add(doc.rel);
     const items = trackedItems(doc);
     const cls = phaseStatusClass(row.status);
@@ -870,7 +1011,7 @@ function renderTasks(): void {
       h(
         'span',
         { class: 'phase-main' },
-        h('span', { class: 'phase-goal' }, doc?.title.replace(/^Phase\s+\d+\s*[:\-–]\s*/i, '') || row.goal || `Phase ${row.number}`),
+        h('span', { class: 'phase-goal' }, doc?.title.replace(PHASE_PREFIX, '') || row.goal || `Phase ${row.number}`),
         h('span', { class: 'phase-status' }, row.status || 'planned', counted ? `, ${done} of ${counted}` : ''),
       ),
     );
@@ -878,7 +1019,7 @@ function renderTasks(): void {
       h(
         'li',
         { class: `phase ${cls}${row === currentRow ? ' current' : ''}` },
-        head,
+        phaseTop(p, boardIndex.get(`P${row.number}`), head),
         items.length ? segmentBar(items) : null,
         open && doc ? taskList(p, doc, items) : null,
         open && !doc ? h('p', { class: 'phase-missing' }, row.doc ? `${row.doc} not found` : 'No phase document linked') : null,
@@ -919,19 +1060,8 @@ function renderTasks(): void {
  * tasks becomes a step on the spine; its status comes from its top-level tasks.
  */
 function renderLegacy(p: Proj, file: TaskFile, files: TaskFile[]): void {
-  const sections: { name: string; items: TaskItem[] }[] = [];
-  for (const it of file.items) {
-    const name = it.section ?? 'Tasks';
-    let sec = sections[sections.length - 1];
-    if (!sec || sec.name !== name) sections.push((sec = { name, items: [] }));
-    sec.items.push(it);
-  }
-  const statusOf = (items: TaskItem[]) => {
-    const top = items.filter((i) => i.depth === 0 && i.state !== 'cancelled');
-    if (top.length && top.every((i) => i.state === 'done')) return 'done';
-    if (items.some((i) => i.state === 'done' || i.state === 'doing')) return 'in progress';
-    return 'planned';
-  };
+  const sections = legacySections(file);
+  const statusOf = legacyStatus;
   // Sections in this format aren't always in delivery order: prefer one already in progress.
   const current = sections.find((s) => statusOf(s.items) === 'in progress') ?? sections.find((s) => statusOf(s.items) !== 'done');
   if (!p.userToggled && current) p.expanded = new Set([current.name]);
@@ -947,21 +1077,25 @@ function renderLegacy(p: Proj, file: TaskFile, files: TaskFile[]): void {
       h(
         'li',
         { class: `phase ${phaseStatusClass(status)}${sec === current ? ' current' : ''}` },
-        h(
-          'button',
-          {
-            class: 'phase-head',
-            type: 'button',
-            'aria-expanded': String(open),
-            onclick: () => {
-              p.userToggled = true;
-              if (open) p.expanded.delete(sec.name);
-              else p.expanded.add(sec.name);
-              renderTasks();
+        phaseTop(
+          p,
+          boardIndex.get(`section:${sec.name}`),
+          h(
+            'button',
+            {
+              class: 'phase-head',
+              type: 'button',
+              'aria-expanded': String(open),
+              onclick: () => {
+                p.userToggled = true;
+                if (open) p.expanded.delete(sec.name);
+                else p.expanded.add(sec.name);
+                renderTasks();
+              },
             },
-          },
-          h('span', { class: 'phase-num' }, String(n + 1)),
-          h('span', { class: 'phase-main' }, h('span', { class: 'phase-goal' }, sec.name), h('span', { class: 'phase-status' }, status, `, ${done} of ${counted}`)),
+            h('span', { class: 'phase-num' }, String(n + 1)),
+            h('span', { class: 'phase-main' }, h('span', { class: 'phase-goal' }, sec.name), h('span', { class: 'phase-status' }, status, `, ${done} of ${counted}`)),
+          ),
         ),
         segmentBar(top),
         open ? taskList(p, file, sec.items) : null,
@@ -1336,13 +1470,17 @@ function onEvent(e: SidecarEvent): void {
         renderSession();
       }
       break;
-    case 'busy':
-      if (p.busy && !e.busy) markUnseen();
+    case 'busy': {
+      const finished = p.busy && !e.busy;
+      if (finished) markUnseen();
       p.busy = e.busy;
       p.status = e.status;
+      if (finished && !p.replaying) startQueued(p);
       break;
+    }
     case 'user':
       userMessage(p, e.text, e.action);
+      scrollToEnd(p);
       break;
     case 'assistantDelta':
       return assistantDelta(p, e.msgId, e.index, e.text);
@@ -1392,6 +1530,7 @@ function onEvent(e: SidecarEvent): void {
     case 'turnEnd':
       return renderSession();
     case 'busy':
+      renderPriorities(p);
       return renderComposer();
     case 'processes':
       return renderProcesses();
@@ -1557,7 +1696,12 @@ async function init(): Promise<void> {
       submit();
     }
   });
-  $('stop').addEventListener('click', () => active && send({ type: 'interrupt', project: active.dir }));
+  $('stop').addEventListener('click', () => {
+    if (!active) return;
+    // Stopping Claude also pauses the queue, so the next item doesn't start in its place.
+    active.holdQueue = true;
+    send({ type: 'interrupt', project: active.dir });
+  });
   $('permission-mode').addEventListener('change', (ev) => {
     if (!active) return;
     active.mode = (ev.target as HTMLSelectElement).value as PermissionModeName;

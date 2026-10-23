@@ -305,6 +305,20 @@ textarea {
   color: var(--action);
 }
 
+.phase-top {
+  position: relative;
+}
+.phase-top .phase-head {
+  padding-right: 26px;
+}
+.phase-top > .more {
+  position: absolute;
+  top: 4px;
+  right: 0;
+}
+.phase-top:hover > .more {
+  opacity: 1;
+}
 .phase > .bar,
 .phase > .task-list,
 .phase > .phase-missing {
@@ -1592,6 +1606,9 @@ textarea {
   padding: 8px 18px;
 }
 
+.pane-meta .link-button {
+  margin-left: 8px;
+}
 .link-button {
   padding: 0;
   border: 0;

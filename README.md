@@ -14,13 +14,20 @@ hooks load exactly as they do in the CLI.
 - **A live delivery board** built from `task.md` (the phase table), `tasks/task_phase_<n>.md`
   (each phase's `T<n>` tasks) and `tasks/bugs.md`. It updates the moment a file changes on disk,
   whether Claude or you changed it, and you can tick tasks from the board.
-- **A ⋯ menu on every task and bug:**
-  - Prioritise / remove priority. Prioritised items form a queue at the top of the board.
-  - Start with a subagent (open items) or reinvestigate with a subagent (finished items). These
-    send Claude a prompt that runs the work in a background subagent, following your
-    task-tracking standard.
-  - Show progress. Opens the item's spec and summary as formatted markdown.
-  - Summarise work done (finished items).
+- **A ⋯ menu on every task, bug and phase** (older TASK.md sections count as phases):
+  - Prioritise (start after current work). Queued items wait under **Up next** and start one at a
+    time, in order, each time Claude finishes a turn. If Claude is free and nothing is queued ahead,
+    it starts straight away. Pressing Stop pauses the queue until you start something; **Start next**
+    picks it back up. An item leaves the queue once it starts.
+  - Start now. Sends Claude the work in this project's own conversation.
+  - Start in subagent (own worktree). Claude runs the work in a background subagent with
+    `isolation: "worktree"`, so it gets its own git worktree and branch and works in parallel with
+    the conversation. Its task-file edits land in that worktree until you merge it. Claude Code's
+    `worktree.baseRef` setting decides whether the branch starts from `origin`'s default branch
+    (the default) or your local `HEAD`.
+  - Show progress (a task's spec and summary) or Show phase document.
+  - Summarise work done and reinvestigate with a subagent (finished items).
+- **Project summary.** Click the project's name above the board to read its `plan.md`, rendered.
 - **Permission modes per project:** Ask before acting, Accept file edits, Auto mode, Plan only or
   Never ask, chosen in the message box. Auto mode lets Claude Code's safety classifier approve
   routine actions and ask only about risky ones. Each project reopens in the mode you last chose for
@@ -46,7 +53,7 @@ have checkbox tasks, the board reads it in the older layout:
   and each **Blocked by** reason as written.
 - **Show details** opens the task's own entry (Deliverable, Scope, Acceptance criteria and so on) as
   formatted markdown, since this format has no separate spec files.
-- **Start with a subagent** tells Claude to work from that entry: read its References, then build its
+- **Start now** and **Start in subagent** tell Claude to work from that entry: read its References, then build its
   Deliverable within its Scope until every acceptance criterion is met. Override it with
   `prompts.startLegacyTask` in `.claude-desk.json`.
 
@@ -175,16 +182,22 @@ buttons send:
   "docGlobs": ["specs/*.md", "summaries/*.md"],
   "ignore": ["**/node_modules/**", "**/.git/**"],
   "prompts": {
-    "startTask": "Start work on {ref} ({title}) from {file}. Run it in a background subagent...",
+    "startTask": "Start work on {ref} ({title}) from {file}.\n\n{where} ...",
     "startBug": "...",
+    "startPhase": "...",
+    "whereNow": "Do it here in this conversation.",
+    "whereSubagent": "Run it in a background subagent with worktree isolation...",
     "reinvestigate": "...",
     "summarise": "..."
   }
 }
 ```
 
-Prompt placeholders: `{ref}` `{title}` `{file}` `{specPath}` `{summaryPath}` `{docs}`. The
-defaults are in `sidecar/src/actions.ts`.
+Prompt placeholders: `{ref}` `{title}` `{file}` `{specPath}` `{summaryPath}` `{docs}` `{where}`.
+`{where}` is `whereNow` for Start now and `whereSubagent` for Start in subagent; a start prompt
+without it (one written before it existed) gets it added at the end. The start prompts are
+`startTask`, `startBug`, `startLegacyTask`, `startPhase` and `startLegacySection`. The defaults are
+in `sidecar/src/actions.ts`.
 
 Task checkboxes understand `[ ]` to do, `[x]` done, `[/]` or `[~]` in progress and `[-]` dropped.
 
