@@ -1193,6 +1193,16 @@ textarea {
   padding-top: 14px;
   border-top: 1px solid var(--line);
 }
+.project-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.project-title h1 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
 .project-header h1 {
   margin: 0;
   font-family: var(--serif);

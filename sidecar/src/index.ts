@@ -1,6 +1,7 @@
 // Claude Desk sidecar: one Claude Code session and one task watcher per open project,
 // all running at once. Speaks newline-delimited JSON on stdin (commands) and stdout (events).
 import { createInterface } from 'node:readline';
+import { spawn } from 'node:child_process';
 import { readFileSync, promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -141,6 +142,19 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   });
 }
 
+/** Show a folder in Finder, Explorer or the desktop's file manager. */
+function openInFileManager(dir: string): Promise<void> {
+  const [cmd, args] = process.platform === 'darwin' ? ['open', [dir]] : process.platform === 'win32' ? ['explorer', [dir]] : ['xdg-open', [dir]];
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+    child.once('error', (err) => reject(new Error(`Couldn't open the folder with ${cmd}: ${err.message}`)));
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 function need(dir: string): Project {
   const p = projects.get(dir);
   if (!p) throw new Error(`That project isn't open: ${dir}`);
@@ -153,6 +167,8 @@ async function handle(cmd: UiCommand): Promise<void> {
       return openProject(cmd.projectDir, cmd.permissionMode);
     case 'close':
       return closeProject(cmd.project);
+    case 'openFolder':
+      return openInFileManager(need(cmd.project).dir);
     case 'send':
       if (cmd.text.trim()) need(cmd.project).session.send(cmd.text);
       return;

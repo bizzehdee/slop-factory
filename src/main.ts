@@ -1626,9 +1626,7 @@ function renderProjects(): void {
       closeBtn.append(svgIcon(ICON_CLOSE));
       closeBtn.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        const working = p.busy || p.processes.some((x) => x.status === 'running');
-        if (working && !confirm(`Claude is still working in ${p.name}. Close it and stop that work?`)) return;
-        send({ type: 'close', project: p.dir });
+        closeProject(p);
       });
       return h(
         'li',
@@ -1753,6 +1751,20 @@ function renderSession(): void {
   if (p?.lastTurn) rows.push(['Last turn', `${(p.lastTurn.durationMs / 1000).toFixed(1)}s, ${p.lastTurn.outputTokens.toLocaleString()} tokens out`]);
   if (p && !s) rows.push(['', h('span', { class: 'muted' }, 'Claude Code starts with your first message.')]);
   dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
+}
+
+function closeProject(p: Proj): void {
+  const working = p.busy || p.processes.some((x) => x.status === 'running');
+  if (working && !confirm(`Claude is still working in ${p.name}. Close it and stop that work?`)) return;
+  send({ type: 'close', project: p.dir });
+}
+
+function projectMenu(p: Proj): MenuItem[] {
+  const items: MenuItem[] = [{ label: 'Open directory', run: () => send({ type: 'openFolder', project: p.dir }) }];
+  if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
+  items.push({ label: 'Copy path', run: () => void navigator.clipboard?.writeText(p.dir) });
+  items.push({ label: 'Close project', run: () => closeProject(p) });
+  return items;
 }
 
 function renderHeader(): void {
@@ -2212,6 +2224,12 @@ async function init(): Promise<void> {
     send({ type: 'setPermissionMode', project: active.dir, mode: active.mode });
   });
   $('docs-close').addEventListener('click', closeDocs);
+  $('project-menu').addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const b = $('project-menu');
+    if (menuAnchor === b) return closeMenu();
+    if (active) openMenu(b, projectMenu(active));
+  });
   wireProviderDialog();
 
   document.addEventListener('keydown', (ev) => {

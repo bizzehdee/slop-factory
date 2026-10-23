@@ -39,6 +39,7 @@ export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summaris
 export type UiCommand =
   | { type: 'open'; projectDir: string; permissionMode?: PermissionModeName }
   | { type: 'close'; project: string }
+  | { type: 'openFolder'; project: string } // in the system file manager
   | { type: 'send'; project: string; text: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }

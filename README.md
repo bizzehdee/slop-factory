@@ -36,6 +36,8 @@ hooks load exactly as they do in the CLI.
   question moves on to the next. Answers to documented questions ask Claude to record the decision
   and take the question off its list. Items marked "(left open by the user, date)" show as left open.
 - **Project summary.** Click the project's name above the board to read its `plan.md`, rendered.
+  The ⋯ beside the name opens the project folder in your file manager (Finder, Explorer, or
+  `xdg-open` on Linux), shows the plan, copies the path or closes the project.
 - **Permission modes per project:** Ask before acting, Accept file edits, Auto mode, Plan only or
   Skip all permission checks, chosen in the message box. Auto mode lets Claude Code's safety
   classifier approve routine actions and ask only about risky ones. Skip all permission checks is
