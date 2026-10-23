@@ -392,6 +392,29 @@ test('older TASK.md: the progress view gets the task entry, dedented, without it
   }
 });
 
+test('the root plan.md is watched as a doc, in any case, even with custom docGlobs', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-'));
+  let w;
+  try {
+    await mkdir(path.join(root, 'docs'), { recursive: true });
+    await writeFile(path.join(root, 'docs/plan.md'), '# Not the project plan\n');
+    let docs;
+    w = new TaskWatcher(root, { ...DEFAULT_TASK_CONFIG, docGlobs: [] }, (_files, d) => (docs = d));
+    w.start();
+    await waitFor(() => docs !== undefined);
+    assert.deepEqual(docs, []);
+    await writeFile(path.join(root, 'PLAN.md'), '# Plan\n\nShip it.\n');
+    await waitFor(() => docs.length === 1);
+    assert.deepEqual(docs, ['PLAN.md']);
+    assert.deepEqual(await w.readDocs(['PLAN.md']), [{ rel: 'PLAN.md', markdown: '# Plan\n\nShip it.\n' }]);
+    await rm(path.join(root, 'PLAN.md'));
+    await waitFor(() => docs.length === 0);
+  } finally {
+    await w?.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('older-format start prompt works from the entry, not a spec', () => {
   const item = { key: 'TASK-003', kind: 'task', id: 'TASK-003', title: 'Signed builds', rel: 'TASK.md', done: false, legacy: true };
   const prompt = promptFor('start', item, {});

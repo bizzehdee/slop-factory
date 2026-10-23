@@ -246,6 +246,9 @@ export async function loadTaskConfig(root: string): Promise<TaskConfig> {
   }
 }
 
+/** The project summary at the root (plan.md, any case). Always watched, whatever docGlobs says. */
+export const isPlanDoc = (rel: string) => rel.toLowerCase() === 'plan.md';
+
 const toRel = (root: string, abs: string) => path.relative(root, abs).split(path.sep).join('/');
 
 export class TaskWatcher {
@@ -263,7 +266,8 @@ export class TaskWatcher {
     private onChange: (files: TaskFile[], docs: string[]) => void,
   ) {
     this.isTask = picomatch(config.taskGlobs, { dot: false, nocase: true });
-    this.isDoc = picomatch(config.docGlobs ?? [], { dot: false, nocase: true });
+    const isDocGlob = picomatch(config.docGlobs ?? [], { dot: false, nocase: true });
+    this.isDoc = (rel) => isPlanDoc(rel) || isDocGlob(rel);
     this.isIgnored = picomatch(config.ignore, { dot: true });
   }
 

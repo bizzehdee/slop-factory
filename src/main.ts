@@ -556,6 +556,24 @@ function moreButton(p: Proj, item: BoardItem): HTMLButtonElement {
 
 let docsView: { project: string; key: string; requestId: string; tab: string; docs: DocContent[] } | undefined;
 
+// The panel also shows the project's plan.md, under this key (never a board item's key).
+const PLAN_KEY = 'plan:';
+const planRel = (p: Proj) => [...p.docs].find((rel) => rel.toLowerCase() === 'plan.md');
+const planOpen = (p: Proj) => docsView?.project === p.dir && docsView.key === PLAN_KEY;
+
+function togglePlan(p: Proj): void {
+  if (planOpen(p)) return closeDocs();
+  const rel = planRel(p);
+  if (!rel) return;
+  const requestId = Math.random().toString(36).slice(2);
+  docsView = { project: p.dir, key: PLAN_KEY, requestId, tab: rel, docs: [] };
+  send({ type: 'readDocs', project: p.dir, requestId, key: PLAN_KEY, paths: [rel] });
+  renderDocs();
+  renderHeader();
+  $('docs-panel').hidden = false;
+  $('docs-close').focus();
+}
+
 function docPaths(item: BoardItem): string[] {
   return [item.spec, item.summary, ...item.docLinks.map((l) => l.rel)].filter((x): x is string => !!x);
 }
@@ -571,12 +589,19 @@ function showProgress(p: Proj, item: BoardItem): void {
   docsView = { project: p.dir, key: item.key, requestId, tab, docs: [] };
   send({ type: 'readDocs', project: p.dir, requestId, key: item.key, paths: docPaths(item), blocks: docBlocks(item) });
   renderDocs();
+  renderHeader();
   $('docs-panel').hidden = false;
   $('docs-close').focus();
 }
 
 function refreshDocs(p: Proj): void {
   if (!docsView || docsView.project !== p.dir) return;
+  if (docsView.key === PLAN_KEY) {
+    const rel = planRel(p);
+    docsView.requestId = Math.random().toString(36).slice(2);
+    send({ type: 'readDocs', project: p.dir, requestId: docsView.requestId, key: PLAN_KEY, paths: rel ? [rel] : [] });
+    return;
+  }
   const item = allItems(p).get(docsView.key);
   if (!item) return;
   docsView.requestId = Math.random().toString(36).slice(2);
@@ -594,9 +619,10 @@ function renderDocs(): void {
   const panel = $('docs-panel');
   if (!docsView) return void (panel.hidden = true);
   const p = projects.get(docsView.project);
-  const item = p ? allItems(p).get(docsView.key) : undefined;
-  $('docs-ref').textContent = item?.id ?? '';
-  $('docs-title').textContent = item?.title ?? docsView.key;
+  const isPlan = docsView.key === PLAN_KEY;
+  const item = p && !isPlan ? allItems(p).get(docsView.key) : undefined;
+  $('docs-ref').textContent = isPlan ? 'Plan' : item?.id ?? '';
+  $('docs-title').textContent = isPlan ? p?.name ?? '' : item?.title ?? docsView.key;
 
   const docs = docsView.docs;
   if (docs.length && !docs.some((d) => d.rel === docsView!.tab)) docsView.tab = docs[0].rel;
@@ -628,6 +654,8 @@ function renderDocs(): void {
     // A task entry starts with "TASK-050: Title", which the panel header already shows.
     body.innerHTML = md(isBlock ? current.markdown.replace(/^[^\n]*\n?/, '') : current.markdown);
     body.prepend(h('p', { class: 'docs-path' }, isBlock ? `${item!.rel}, line ${item!.line + 1}` : current.rel));
+  } else if (isPlan) {
+    body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, p && planRel(p) ? 'Loading plan.md…' : 'This project has no plan.md.')));
   } else {
     const what = item?.kind === 'bug' ? 'bug' : 'task';
     const message = item?.legacy
@@ -647,11 +675,14 @@ function renderDocs(): void {
       actions.append(h('button', { class: 'button', type: 'button', onclick: () => runAction(p, 'reinvestigate', item) }, 'Reinvestigate'));
     }
   }
+  actions.hidden = !actions.childElementCount;
 }
 
 function closeDocs(): void {
+  const wasPlan = docsView?.key === PLAN_KEY;
   docsView = undefined;
   $('docs-panel').hidden = true;
+  if (wasPlan) renderHeader();
 }
 
 // ---------- board ----------
@@ -1115,7 +1146,13 @@ function renderHeader(): void {
   const p = active;
   $('project-header').hidden = !p;
   if (!p) return void (document.title = 'Claude Desk');
-  $('project-name').textContent = p.name;
+  // With a plan.md the name opens it as the project summary.
+  const plan = planRel(p);
+  $('project-name').replaceChildren(
+    plan
+      ? h('button', { class: 'project-name-button', type: 'button', title: `Show ${plan}`, 'aria-expanded': String(planOpen(p)), 'aria-controls': 'docs-panel', onclick: () => togglePlan(p) }, p.name)
+      : p.name,
+  );
   $('project-path').textContent = `‎${p.dir}‎`;
   $('project-path').title = p.dir;
   const fw = p.framework;
@@ -1361,6 +1398,7 @@ function onEvent(e: SidecarEvent): void {
     case 'tasks':
     case 'priorities':
       renderTasks();
+      renderHeader();
       if (docsView) renderDocs();
       return;
   }

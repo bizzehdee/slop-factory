@@ -174,7 +174,7 @@ export type ProjectEvent =
   | { type: 'permissionResolved'; id: string }
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
-  | { type: 'tasks'; files: TaskFile[]; docs: string[] }
+  | { type: 'tasks'; files: TaskFile[]; docs: string[] } // docs: watched specs, summaries and the root plan.md that exist
   | { type: 'priorities'; order: string[] }
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }
   | { type: 'replayDone' }

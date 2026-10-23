@@ -1186,6 +1186,25 @@ textarea {
   font-weight: 500;
   line-height: 1.25;
 }
+.project-name-button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+.project-name-button:hover,
+.project-name-button[aria-expanded='true'] {
+  color: var(--clay-strong);
+  text-decoration-color: currentColor;
+}
 .project-header .project-path {
   margin: 2px 0 0;
 }
@@ -1551,6 +1570,9 @@ textarea {
 .docs-empty {
   color: var(--muted);
   padding: 24px 0;
+}
+.docs-actions[hidden] {
+  display: none;
 }
 .docs-actions {
   display: flex;
