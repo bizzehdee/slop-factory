@@ -21,6 +21,12 @@ hooks load exactly as they do in the CLI.
     task-tracking standard.
   - Show progress. Opens the item's spec and summary as formatted markdown.
   - Summarise work done (finished items).
+- **Permission modes per project:** Ask before acting, Accept file edits, Auto mode, Plan only or
+  Never ask, chosen in the message box. Auto mode lets Claude Code's safety classifier approve
+  routine actions and ask only about risky ones. Each project reopens in the mode you last chose for
+  it, and newly opened projects start in your most recent choice. Auto mode needs the Claude
+  subscription (its checks run on Anthropic's servers), so it's unavailable for projects on a local
+  model; if Claude Code refuses it, the app says so and shows the mode actually in effect.
 - **Running processes:** background shells, monitors and subagents, with elapsed time, the command
   and a Stop button.
 - **Local models.** Any project can use Ollama or llama.cpp instead of your Claude subscription.
@@ -76,7 +82,8 @@ any Claude login or API key from that session's environment so nothing reaches A
 models need tool calling and a long context (32k tokens or more) to do agentic work well.
 Switching provider restarts that project's Claude Code session and starts a new conversation.
 
-Providers are saved in `~/.claude-desk/config.json`, along with which project uses which.
+Providers are saved in `~/.claude-desk/config.json`, along with which project uses which and each
+project's permission mode.
 
 ## How it works
 

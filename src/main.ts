@@ -1135,7 +1135,13 @@ function renderComposer(): void {
   prompt.placeholder = p ? `Message Claude about ${p.name}` : 'Open a project to start';
   const mode = $<HTMLSelectElement>('permission-mode');
   mode.disabled = !p;
+  // Auto mode's safety checks run on Anthropic's servers, so it needs the Claude subscription.
+  const autoOption = mode.querySelector<HTMLOptionElement>('option[value=auto]')!;
+  const local = !!p && providerOf(p).kind !== 'subscription';
+  autoOption.disabled = local;
+  autoOption.textContent = local ? 'Auto mode (needs Claude subscription)' : 'Auto mode';
   if (p) mode.value = p.mode;
+  mode.title = p?.mode === 'auto' ? 'Claude approves routine actions itself and asks before risky ones' : 'How Claude asks before acting';
   const prov = $<HTMLSelectElement>('provider');
   prov.disabled = !p;
   prov.replaceChildren(
@@ -1279,6 +1285,10 @@ function onEvent(e: SidecarEvent): void {
       return;
     case 'session':
       p.session = e.info;
+      break;
+    case 'mode':
+      p.mode = e.mode;
+      if (isActive) renderComposer();
       break;
     case 'provider':
       p.providerId = e.providerId;
@@ -1479,7 +1489,7 @@ async function openProject(dir?: string | null): Promise<void> {
   const known = projects.get(clean);
   if (known) return activate(known);
   pendingOpen = clean;
-  send({ type: 'open', projectDir: clean, permissionMode: 'default' });
+  send({ type: 'open', projectDir: clean });
 }
 
 function submit(): void {
@@ -1543,7 +1553,7 @@ async function init(): Promise<void> {
     saved = [];
   }
   restoreActive = fromUrl.length ? fromUrl[fromUrl.length - 1] : load('claude-desk:active');
-  for (const dir of new Set([...saved, ...fromUrl])) send({ type: 'open', projectDir: dir, permissionMode: 'default' });
+  for (const dir of new Set([...saved, ...fromUrl])) send({ type: 'open', projectDir: dir });
 }
 
 void init();

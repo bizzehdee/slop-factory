@@ -400,3 +400,25 @@ test('older-format start prompt works from the entry, not a spec', () => {
   assert.doesNotMatch(prompt, /spec-TASK/);
   assert.match(promptFor('reinvestigate', { ...item, done: true }, {}), /Read its entry in TASK\.md/);
 });
+
+test('permission mode is remembered per project, and the last choice becomes the default', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfg-'));
+  process.env.CLAUDE_DESK_CONFIG_DIR = dir;
+  try {
+    const { ProviderStore } = await import('../dist/providers.js');
+    const store = new ProviderStore();
+    await store.load();
+    assert.equal(store.modeFor('/proj/a'), 'default');
+    await store.setMode('/proj/a', 'auto');
+    await store.setMode('/proj/b', 'acceptEdits');
+    await store.setMode('/proj/c', 'not-a-mode');
+    const again = new ProviderStore();
+    await again.load();
+    assert.equal(again.modeFor('/proj/a'), 'auto');
+    assert.equal(again.modeFor('/proj/b'), 'acceptEdits');
+    assert.equal(again.modeFor('/proj/new'), 'acceptEdits', 'new projects start in the last mode chosen');
+  } finally {
+    delete process.env.CLAUDE_DESK_CONFIG_DIR;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ProviderConfig } from './protocol.js';
+import type { PermissionModeName, ProviderConfig } from './protocol.js';
 
 // Where model providers live. Each project remembers which one it uses.
 // Claude Code talks to any server that speaks Anthropic's Messages API (/v1/messages),
@@ -18,14 +18,18 @@ export const PRESETS: Record<'ollama' | 'llamacpp' | 'custom', Omit<ProviderConf
 interface DeskState {
   providers: ProviderConfig[];
   projectProvider: Record<string, string>;
+  projectMode: Record<string, PermissionModeName>;
+  defaultMode?: PermissionModeName; // the last mode chosen anywhere; new projects start in it
 }
+
+const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 
 export function configDir(): string {
   return process.env.CLAUDE_DESK_CONFIG_DIR || path.join(os.homedir(), '.claude-desk');
 }
 
 export class ProviderStore {
-  private state: DeskState = { providers: [], projectProvider: {} };
+  private state: DeskState = { providers: [], projectProvider: {}, projectMode: {} };
   private file = path.join(configDir(), 'config.json');
 
   async load(): Promise<void> {
@@ -34,6 +38,8 @@ export class ProviderStore {
       this.state = {
         providers: Array.isArray(raw.providers) ? raw.providers.filter(isProvider) : [],
         projectProvider: raw.projectProvider && typeof raw.projectProvider === 'object' ? raw.projectProvider : {},
+        projectMode: raw.projectMode && typeof raw.projectMode === 'object' ? raw.projectMode : {},
+        defaultMode: MODES.includes(raw.defaultMode) ? raw.defaultMode : undefined,
       };
     } catch {
       /* first run */
@@ -58,6 +64,19 @@ export class ProviderStore {
     else this.state.projectProvider[dir] = p.id;
     await this.save();
     return p;
+  }
+
+  /** The permission mode a project opens in: its own last choice, else the last one chosen anywhere. */
+  modeFor(dir: string): PermissionModeName {
+    const m = this.state.projectMode[dir] ?? this.state.defaultMode;
+    return m && MODES.includes(m) ? m : 'default';
+  }
+
+  async setMode(dir: string, mode: PermissionModeName): Promise<void> {
+    if (!MODES.includes(mode)) return;
+    this.state.projectMode[dir] = mode;
+    this.state.defaultMode = mode;
+    await this.save();
   }
 
   async upsert(input: ProviderConfig): Promise<ProviderConfig> {

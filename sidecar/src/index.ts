@@ -82,10 +82,12 @@ function replay(p: Project): void {
   send({ type: 'replayDone' });
 }
 
-async function openProject(dirIn: string, mode: PermissionModeName = 'default'): Promise<void> {
+async function openProject(dirIn: string, requested?: PermissionModeName): Promise<void> {
   const dir = path.resolve(dirIn);
   const existing = projects.get(dir);
   if (existing) return replay(existing);
+  // Each project reopens in the mode you last chose for it.
+  const mode = requested ?? providers.modeFor(dir);
 
   const st = await fs.stat(dir).catch(() => null);
   if (!st?.isDirectory()) throw new Error(`Not a folder: ${dir}`);
@@ -158,8 +160,13 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).session.stopProcess(cmd.id);
     case 'permissionReply':
       return need(cmd.project).session.replyPermission(cmd.id, cmd.decision, cmd.message);
-    case 'setPermissionMode':
-      return need(cmd.project).session.setPermissionMode(cmd.mode);
+    case 'setPermissionMode': {
+      const p = need(cmd.project);
+      const mode = await p.session.setPermissionMode(cmd.mode);
+      if (mode === cmd.mode) await providers.setMode(p.dir, mode);
+      p.out({ type: 'mode', mode });
+      return;
+    }
     case 'toggleTask':
       return need(cmd.project).tasks.toggle(cmd.rel, cmd.line, cmd.text);
     case 'togglePriority': {

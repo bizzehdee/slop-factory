@@ -2,7 +2,7 @@
 // Each message is one JSON object per line on the sidecar's stdin/stdout.
 // The UI imports these types too (type-only), so keep this file free of runtime imports.
 
-export type PermissionModeName = 'default' | 'acceptEdits' | 'plan' | 'bypassPermissions';
+export type PermissionModeName = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 
 /** Where Claude Code sends model requests. Local servers must speak Anthropic's /v1/messages. */
 export interface ProviderConfig {
@@ -160,6 +160,7 @@ export interface DocContent {
 export type ProjectEvent =
   | { type: 'project'; dir: string; name: string; framework: FrameworkInfo; taskGlobs: string[]; permissionMode: PermissionModeName; providerId: string }
   | { type: 'provider'; providerId: string }
+  | { type: 'mode'; mode: PermissionModeName }
   | { type: 'closed' }
   | { type: 'session'; info: SessionInfo }
   | { type: 'busy'; busy: boolean; status?: string | null }
