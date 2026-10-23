@@ -10,6 +10,7 @@ import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
 import { Priorities, promptFor, type DeskPrompts } from './actions.js';
 import { ProviderStore, probeModels } from './providers.js';
+import { createProject } from './newproject.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -228,6 +229,14 @@ async function handle(cmd: UiCommand): Promise<void> {
       }
       return;
     }
+    case 'createProject':
+      try {
+        const dir = await createProject(cmd.request, (line) => emit({ type: 'createProgress', requestId: cmd.requestId, line }));
+        emit({ type: 'projectCreated', requestId: cmd.requestId, ok: true, dir });
+      } catch (err) {
+        emit({ type: 'projectCreated', requestId: cmd.requestId, ok: false, error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
     case 'probeProvider':
       try {
         emit({ type: 'probe', requestId: cmd.requestId, ok: true, models: await probeModels(cmd.baseUrl, cmd.authToken) });

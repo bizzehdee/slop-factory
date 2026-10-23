@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseTaskMarkdown, parseTaskFile, TaskWatcher, DEFAULT_TASK_CONFIG } from '../dist/tasks.js';
@@ -515,6 +515,53 @@ test('the watcher gathers open questions from plan.md, docs/ and phase documents
     await waitFor(() => questions.length === 2);
   } finally {
     await w?.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('basic AGENTS.md is the task-tracking standard alone, a level down, with fenced examples untouched', async () => {
+  const { basicAgentsMd, folderFor } = await import('../dist/newproject.js');
+  const standard = '---\nname: task-tracking\n---\n\n# Task tracking\n\n## Delivery phases\n\nSee the plan ([[project-planning]]). Commit per [[git-and-commits]].\n\n```markdown\n# Tasks\n```\n';
+  const out = basicAgentsMd(standard);
+  assert.match(out, /^# Agent instructions\n/);
+  assert.match(out, /\n## Task tracking\n\n### Delivery phases\n/);
+  assert.match(out, /See the plan\. Commit per the git and commits standard\./);
+  assert.match(out, /```markdown\n# Tasks\n```/);
+  assert.doesNotMatch(out, /name: task-tracking/);
+  assert.equal(folderFor('Slop Factory!'), 'slop-factory');
+});
+
+test('createProject makes the folder, a git repo with its remote, and the chosen framework', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-new-'));
+  const prev = process.env.CLAUDE_DESK_CONFIG_DIR;
+  process.env.CLAUDE_DESK_CONFIG_DIR = path.join(root, 'config');
+  try {
+    const { execFileSync } = await import('node:child_process');
+    // A stand-in framework copy, so the test needs no network (its pull fails and the copy is used).
+    const fw = path.join(root, 'config', 'agent-framework');
+    await mkdir(path.join(fw, 'standards'), { recursive: true });
+    await writeFile(path.join(fw, 'standards', 'task-tracking.md'), '---\nname: task-tracking\n---\n\n# Task tracking\n\n## Bugs\n\nKeep tasks/bugs.md.\n');
+    await writeFile(path.join(fw, 'install.sh'), 'echo "# full install" > "$1/AGENTS.md"\n');
+    execFileSync('git', ['init', '-q', fw]);
+    const { createProject } = await import('../dist/newproject.js');
+    const log = [];
+    const parent = path.join(root, 'code');
+    await mkdir(parent);
+
+    const basic = await createProject({ name: 'Slop Factory', parent, git: true, remote: 'git@github.com:me/slop.git', framework: 'basic' }, (l) => log.push(l));
+    assert.equal(basic, path.join(parent, 'slop-factory'));
+    assert.match(await readFile(path.join(basic, 'AGENTS.md'), 'utf8'), /### Bugs\n\nKeep tasks\/bugs\.md\./);
+    assert.equal(execFileSync('git', ['-C', basic, 'config', '--get', 'remote.origin.url'], { encoding: 'utf8' }).trim(), 'git@github.com:me/slop.git');
+
+    const full = await createProject({ name: 'Full', parent, git: false, framework: 'full' }, (l) => log.push(l));
+    assert.equal(await readFile(path.join(full, 'AGENTS.md'), 'utf8'), '# full install\n');
+    await assert.rejects(stat(path.join(full, '.git')));
+
+    await assert.rejects(createProject({ name: 'Full', parent, git: false, framework: 'none' }, () => {}), /isn't empty/);
+    await assert.rejects(createProject({ name: ' ', parent, git: false, framework: 'none' }, () => {}), /name/);
+  } finally {
+    if (prev === undefined) delete process.env.CLAUDE_DESK_CONFIG_DIR;
+    else process.env.CLAUDE_DESK_CONFIG_DIR = prev;
     await rm(root, { recursive: true, force: true });
   }
 });

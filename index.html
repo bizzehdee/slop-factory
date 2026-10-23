@@ -11,7 +11,7 @@
         <nav class="projects" aria-labelledby="projects-heading">
           <div class="pane-head">
             <h2 id="projects-heading">Projects</h2>
-            <button id="add-project" class="icon-button" type="button" title="Open a project" aria-label="Open a project">
+            <button id="add-project" class="icon-button" type="button" title="New or open a project" aria-label="New or open a project" aria-haspopup="menu" aria-expanded="false">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
             </button>
           </div>
@@ -167,6 +167,53 @@
           <span class="spacer"></span>
           <button class="button quiet" type="button" value="cancel" id="provider-cancel">Cancel</button>
           <button class="button primary" type="submit" id="provider-save">Save and use</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="new-project-dialog" class="dialog" aria-labelledby="new-project-title">
+      <form id="new-project-form" method="dialog">
+        <h2 id="new-project-title">New project</h2>
+        <label class="field">
+          <span>Name</span>
+          <input name="name" type="text" required autocomplete="off" />
+        </label>
+        <div class="field">
+          <label for="np-parent">Location</label>
+          <div class="field-row">
+            <input id="np-parent" name="parent" type="text" required spellcheck="false" placeholder="The folder your projects live in" />
+            <button id="np-browse" class="button" type="button">Browse…</button>
+          </div>
+          <p id="np-target" class="field-hint"></p>
+        </div>
+        <label class="check-field">
+          <input name="git" type="checkbox" checked />
+          <span>Initialise a git repository</span>
+        </label>
+        <label class="field" id="np-remote-field">
+          <span>Remote <small>(optional, added as origin)</small></span>
+          <input name="remote" type="text" spellcheck="false" autocomplete="off" placeholder="git@github.com:you/project.git" />
+        </label>
+        <fieldset class="choice-list">
+          <legend>Agent instructions</legend>
+          <label>
+            <input type="radio" name="framework" value="full" checked />
+            <span><strong>Full agent-framework</strong><small>Every standard: AGENTS.md plus a skill per standard, from bizzehdee/agent-framework.</small></span>
+          </label>
+          <label>
+            <input type="radio" name="framework" value="basic" />
+            <span><strong>Task tracking only</strong><small>An AGENTS.md with just the framework's task and bug tracking rules.</small></span>
+          </label>
+          <label>
+            <input type="radio" name="framework" value="none" />
+            <span><strong>Nothing</strong><small>An empty folder.</small></span>
+          </label>
+        </fieldset>
+        <pre id="np-log" class="np-log" hidden></pre>
+        <p id="np-error" class="field-hint warn-text" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <span class="spacer"></span>
+          <button class="button quiet" type="button" id="np-cancel">Cancel</button>
+          <button class="button primary" type="submit" id="np-create">Create project</button>
         </div>
       </form>
     </dialog>

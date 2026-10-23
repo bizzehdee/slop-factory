@@ -54,7 +54,17 @@ export type UiCommand =
   | { type: 'setProvider'; project: string; providerId: string }
   | { type: 'saveProvider'; provider: ProviderConfig; useFor?: string }
   | { type: 'deleteProvider'; id: string }
-  | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string };
+  | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string }
+  | { type: 'createProject'; requestId: string; request: NewProjectRequest };
+
+export interface NewProjectRequest {
+  name: string;
+  parent: string; // the folder the project's folder goes in
+  folder?: string; // defaults to the name in kebab-case
+  git: boolean;
+  remote?: string; // added as origin
+  framework: 'full' | 'basic' | 'none'; // basic: an AGENTS.md with only task and bug tracking
+}
 
 // ---------- sidecar -> UI ----------
 
@@ -209,6 +219,8 @@ export type GlobalEvent =
   | { type: 'ready'; sdkVersion: string }
   | { type: 'providers'; list: ProviderConfig[] }
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
+  | { type: 'createProgress'; requestId: string; line: string }
+  | { type: 'projectCreated'; requestId: string; ok: boolean; dir?: string; error?: string }
   | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string };
 
 export type SidecarEvent = GlobalEvent | (ProjectEvent & { project: string });

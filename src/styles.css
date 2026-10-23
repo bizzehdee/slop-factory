@@ -2028,3 +2028,78 @@ textarea {
   letter-spacing: 0.02em;
   vertical-align: 1px;
 }
+
+/* ---------- new project ---------- */
+
+.check-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--step--1);
+}
+.check-field input {
+  accent-color: var(--clay);
+  margin: 0;
+}
+.choice-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.choice-list legend {
+  font-size: var(--step--1);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.choice-list label {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  font-size: var(--step--1);
+}
+.choice-list label:has(input:checked) {
+  border-color: var(--clay);
+  background: color-mix(in srgb, var(--clay) 7%, transparent);
+}
+.choice-list input {
+  margin-top: 3px;
+  accent-color: var(--clay);
+}
+.choice-list span {
+  display: grid;
+  gap: 2px;
+}
+.choice-list strong {
+  font-weight: 600;
+}
+.choice-list small {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.np-log {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--raised);
+  border-radius: var(--radius-s);
+  font-family: var(--mono);
+  font-size: 0.6875rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.welcome-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.field[hidden] {
+  display: none;
+}
