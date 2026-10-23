@@ -58,7 +58,9 @@ have checkbox tasks, the board reads it in the older layout:
 - Tasks are `- [ ] TASK-001: Title`, with subtasks such as `TASK-050.1` nested under their parent.
   `[~]` shows as in progress. Section progress counts top-level tasks only.
 - An open task shows **waits on TASK-094** while anything in its **Depends on** field is unfinished,
-  and each **Blocked by** reason as written.
+  and each **Blocked by** reason as written. Both are links: an id goes to that task or bug on the
+  board, a reason that matches an open question opens the question, and any other reason opens the
+  task's own entry where it is written. The same applies to the current format's tasks.
 - **Show details** opens the task's own entry (Deliverable, Scope, Acceptance criteria and so on) as
   formatted markdown, since this format has no separate spec files.
 - **Start now** and **Start in subagent** tell Claude to work from that entry: read its References, then build its

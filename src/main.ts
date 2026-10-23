@@ -174,6 +174,7 @@ interface BoardItem extends ActionItem {
   hasDetails?: boolean;
   dependsOn?: string[];
   blockedBy?: string[];
+  section?: string; // tasks: the heading they sit under (an older TASK.md's sections are its phases)
 }
 
 const isSpec = (l: { label: string; rel: string }) => /spec/i.test(l.label) || /(^|\/)spec[-_]/i.test(l.rel);
@@ -214,6 +215,7 @@ function taskItem(p: Proj, file: TaskFile, t: TaskItem): BoardItem {
     hasDetails: t.hasDetails,
     dependsOn: t.dependsOn,
     blockedBy: t.blockedBy,
+    section: t.section,
     ...resolveDocs(p, { kind: 'task', id: t.id }, t.links),
   };
 }
@@ -1111,14 +1113,14 @@ function docPaths(item: BoardItem): string[] {
   return [item.spec, item.summary, ...item.docLinks.map((l) => l.rel)].filter((x): x is string => !!x);
 }
 
-/** Older-format tasks carry their detail inline: show the entry itself. */
-const docBlocks = (item: BoardItem) => (item.legacy && item.hasDetails ? [{ rel: item.rel, line: item.line }] : undefined);
+/** A task with detail lines under it (Depends on, Blocked by, an older TASK.md's whole entry) shows that entry too. */
+const docBlocks = (item: BoardItem) => (item.kind === 'task' && item.hasDetails ? [{ rel: item.rel, line: item.line }] : undefined);
 const blockRel = (item: BoardItem) => `${item.rel}#L${item.line + 1}`;
 
-function showProgress(p: Proj, item: BoardItem): void {
+function showProgress(p: Proj, item: BoardItem, openOn?: string): void {
   const requestId = Math.random().toString(36).slice(2);
   // Finished work opens on its summary; anything else on its spec.
-  const tab = (item.done ? item.summary : item.spec) ?? item.spec ?? item.summary ?? (docBlocks(item) ? blockRel(item) : '');
+  const tab = openOn ?? (item.done ? item.summary : item.spec) ?? item.spec ?? item.summary ?? (docBlocks(item) ? blockRel(item) : '');
   docsView = { project: p.dir, key: item.key, requestId, tab, docs: [] };
   send({ type: 'readDocs', project: p.dir, requestId, key: item.key, paths: docPaths(item), blocks: docBlocks(item) });
   renderDocs();
@@ -1270,15 +1272,81 @@ function flag(): HTMLElement {
 }
 
 /** "waits on TASK-094" for unfinished dependencies, and Blocked by reasons, on open tasks. */
-function waitHints(item: BoardItem, items: Map<string, BoardItem>): HTMLElement | null {
+// ---------- what blocks a task ----------
+
+const ID_IN_TEXT = /\b(?:TASK-\d+(?:\.\d+)*|[TB]\d+)\b/g;
+const QUIET_WORDS = new Set(
+  'waiting wait until which what should would could there their about need needs with from that this have will when where blocked block question questions decide decided decision answer open user owner the and for are not yet any'.split(' '),
+);
+const words = (text: string) => new Set((text.toLowerCase().match(/[a-z0-9]{3,}/g) ?? []).filter((w) => !QUIET_WORDS.has(w)));
+
+/** The open question a "Blocked by" reason is about: the one sharing most words with it, its own document first. */
+function questionFor(p: Proj, item: BoardItem, reason: string): OpenQuestion | undefined {
+  const reasonWords = words(reason);
+  let best: OpenQuestion | undefined;
+  let bestScore = 0;
+  for (const q of p.docQuestions) {
+    const qWords = words(q.text);
+    let score = [...reasonWords].filter((w) => qWords.has(w)).length;
+    if (!score) continue;
+    if (q.rel === item.rel) score += 0.5;
+    if (score > bestScore) [best, bestScore] = [q, score];
+  }
+  // "Blocked by: open question" with nothing to match on: the first one in the task's own document.
+  return best ?? (/\bquestion/i.test(reason) ? p.docQuestions.find((q) => q.rel === item.rel) : undefined);
+}
+
+/** Show a task or bug on the board: open its phase, scroll to it and flash it. */
+function revealItem(p: Proj, key: string): void {
+  const target = boardIndex.get(key);
+  if (!target) return;
+  if (target.kind === 'task') {
+    const phaseKey = target.legacy ? target.section ?? 'Tasks' : target.phase;
+    if (phaseKey && !p.expanded.has(phaseKey)) {
+      p.userToggled = true;
+      p.expanded.add(phaseKey);
+      renderTasks();
+    }
+  }
+  const el = $('tasks').querySelector<HTMLElement>(`[data-key="${CSS.escape(key)}"]`);
+  if (!el) return showProgress(p, target);
+  el.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  el.classList.remove('flash');
+  void el.offsetWidth;
+  el.classList.add('flash');
+  el.querySelector<HTMLElement>('button')?.focus({ preventScroll: true });
+}
+
+function hintLink(label: string, title: string, run: () => void, cls: string): HTMLElement {
+  return h('button', { class: `hint-link ${cls}`, type: 'button', title, onclick: run }, label);
+}
+
+/** "waits on T4" for unfinished dependencies and each Blocked by reason, each one a link to what blocks it. */
+function waitHints(p: Proj, item: BoardItem, items: Map<string, BoardItem>): HTMLElement | null {
   if (item.done || item.state === 'cancelled') return null;
   const waiting = (item.dependsOn ?? []).filter((id) => {
     const dep = items.get(id);
     return dep && !dep.done && dep.state !== 'cancelled';
   });
   const parts: Child[] = [];
-  if (waiting.length) parts.push(h('span', { class: 'waits' }, `waits on ${waiting.join(', ')}`));
-  for (const r of item.blockedBy ?? []) parts.push(h('span', { class: 'blocked' }, `blocked: ${r}`));
+  if (waiting.length) {
+    parts.push(
+      h(
+        'span',
+        { class: 'waits' },
+        'waits on ',
+        ...waiting.flatMap((id, n) => [n ? ', ' : '', hintLink(id, `Go to ${id}: ${items.get(id)!.title}`, () => revealItem(p, id), 'waits')]),
+      ),
+    );
+  }
+  for (const reason of item.blockedBy ?? []) {
+    const ids = [...new Set(reason.match(ID_IN_TEXT) ?? [])].filter((id) => items.has(id) && id !== item.key);
+    const question = ids.length ? undefined : questionFor(p, item, reason);
+    const label = `blocked: ${reason}`;
+    if (ids.length) parts.push(hintLink(label, `Go to ${ids.join(', ')}`, () => revealItem(p, ids[0]), 'blocked'));
+    else if (question) parts.push(hintLink(label, `Open the question: ${question.text.split('\n')[0]}`, () => openQuestion(p, question.id), 'blocked'));
+    else parts.push(hintLink(label, 'Show where this is recorded', () => showProgress(p, item, docBlocks(item) ? blockRel(item) : undefined), 'blocked'));
+  }
   return parts.length ? h('span', { class: 'hints' }, ...parts) : null;
 }
 
@@ -1298,7 +1366,7 @@ function taskRow(p: Proj, file: TaskFile, t: TaskItem): HTMLElement {
   });
   return h(
     'li',
-    { class: `task ${t.state}${prioritised ? ' prioritised' : ''}`, style: `--depth:${t.depth}` },
+    { class: `task ${t.state}${prioritised ? ' prioritised' : ''}`, style: `--depth:${t.depth}`, dataset: { key: item.key } },
     box,
     h(
       'span',
@@ -1307,7 +1375,7 @@ function taskRow(p: Proj, file: TaskFile, t: TaskItem): HTMLElement {
       h('span', { class: 'task-text' }, item.title),
       prioritised ? flag() : null,
       docChips(p, item),
-      waitHints(item, boardIndex),
+      waitHints(p, item, boardIndex),
     ),
     moreButton(p, item),
   );
@@ -1320,7 +1388,7 @@ function bugRow(p: Proj, file: TaskFile, b: BugEntry): HTMLElement {
   const prioritised = p.priorities.includes(item.key);
   return h(
     'li',
-    { class: `bug ${b.status.replace(/[^a-z]+/g, '-')}${prioritised ? ' prioritised' : ''}` },
+    { class: `bug ${b.status.replace(/[^a-z]+/g, '-')}${prioritised ? ' prioritised' : ''}`, dataset: { key: item.key } },
     h('span', { class: 'item-id bug-id' }, b.id),
     h(
       'span',
