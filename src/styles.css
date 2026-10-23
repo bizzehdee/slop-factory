@@ -1692,3 +1692,24 @@ textarea {
 .dialog-actions .spacer {
   flex: 1;
 }
+
+/* ---------- dependency hints (older TASK.md format) ---------- */
+
+.hints {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+.hints > span {
+  display: block;
+}
+.waits {
+  color: var(--muted);
+}
+.blocked {
+  color: var(--clay);
+}
+.task.done .hints {
+  display: none;
+}

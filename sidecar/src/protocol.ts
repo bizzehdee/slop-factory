@@ -27,6 +27,7 @@ export interface ActionItem {
   rel: string; // file the item lives in
   phase?: string; // phase number, for tasks
   done: boolean;
+  legacy?: boolean; // from an older-format TASK.md: the entry itself holds the detail
   spec?: string; // rel path, when the spec exists
   summary?: string; // rel path, when the summary exists
 }
@@ -43,7 +44,7 @@ export type UiCommand =
   | { type: 'setPermissionMode'; project: string; mode: PermissionModeName }
   | { type: 'toggleTask'; project: string; rel: string; line: number; text: string }
   | { type: 'togglePriority'; project: string; key: string }
-  | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[] }
+  | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[]; blocks?: { rel: string; line: number }[] }
   | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem }
   | { type: 'setProvider'; project: string; providerId: string }
   | { type: 'saveProvider'; provider: ProviderConfig; useFor?: string }
@@ -64,18 +65,23 @@ export interface TaskItem {
   depth: number; // nesting level, 0 = top level
   state: TaskState;
   text: string; // the line after the checkbox, exactly as written
-  id?: string; // "T5" when the line starts with "T5:"
+  id?: string; // "T5" or "TASK-050.1" when the line starts with one followed by ":"
   title: string; // text without the id prefix and without doc links
   links: DocLink[]; // markdown links on the line that point at .md files
   section?: string; // nearest heading above the item
+  dependsOn?: string[]; // ids from a "**Depends on:**" field under the item
+  blockedBy?: string[]; // reasons from a "**Blocked by:**" field, as written (split on ";")
+  hasDetails?: boolean; // the item has indented detail lines under it
 }
 
 // Matches the agent-framework task-tracking standard:
 //   task.md                  -> 'index'  (phase table)
 //   tasks/task_phase_<n>.md  -> 'phase'  (checkbox tasks under "## Tasks")
 //   tasks/bugs.md            -> 'bugs'   ("### B<n>: title" entries with "- Status:" lines)
+//   TASK.md with no phase table -> 'legacy' (older format: "## Section" groups of
+//                               "- [ ] TASK-001: title" entries with detail fields under each)
 // Anything else matched by the task globs is 'other' and just shows its checkboxes.
-export type TaskFileKind = 'index' | 'phase' | 'bugs' | 'other';
+export type TaskFileKind = 'index' | 'phase' | 'bugs' | 'legacy' | 'other';
 
 export interface PhaseRow {
   number: string;

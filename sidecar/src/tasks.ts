@@ -36,7 +36,23 @@ const BUG_HEADING = /^###\s+(B\d+)\s*[:\-–]\s*(.*)$/;
 const BUG_FIELD = /^\s*[-*]\s+(Status|Reported)\s*:\s*(.*)$/i;
 const LINK_TARGET = /\]\(([^)\s]+)\)/;
 const MD_LINK = /\[([^\]]*)\]\(([^)\s]+)\)/g;
-const TASK_ID = /^(T\d+)\s*:\s*/;
+// "T5: ..." (current standard) or "TASK-050.1: ..." (older TASK.md format).
+const TASK_ID = /^((?:TASK-|T)\d+(?:\.\d+)*)\s*:\s*/;
+const ID_IN_TEXT = /\b(?:TASK-\d+(?:\.\d+)*|[TB]\d+)\b/g;
+const DEP_FIELD = /^\s*[-*]\s+\*\*(Depends on|Blocked by)\s*:?\*\*\s*:?\s*(.*)$/i;
+
+/** Last line (exclusive) of the indented block under line i. */
+function blockEnd(lines: string[], i: number, indent: number): number {
+  let j = i + 1;
+  let lastContent = i;
+  for (; j < lines.length; j++) {
+    const l = lines[j];
+    if (!l.trim()) continue;
+    if (/^#{1,6}\s/.test(l) || indentWidth(/^\s*/.exec(l)![0]) <= indent) break;
+    lastContent = j;
+  }
+  return lastContent + 1;
+}
 
 /** Markdown links on a line that point at local .md files, resolved against the file's folder. */
 export function docLinks(line: string, rel: string): DocLink[] {
@@ -127,7 +143,14 @@ export function parseTaskFile(src: string, rel: string): Omit<TaskFile, 'mtime'>
   const kind = fileKind(rel);
   const { title, items } = parseTaskMarkdown(src, rel);
   const file: Omit<TaskFile, 'mtime'> = { rel, kind, title, items };
-  if (kind === 'index') file.phases = parsePhaseTable(src, rel);
+  if (kind === 'index') {
+    file.phases = parsePhaseTable(src, rel);
+    // An older-format TASK.md has no phase table: its checkbox tasks are the plan itself.
+    if (!file.phases.length && items.length) {
+      file.kind = 'legacy';
+      delete file.phases;
+    }
+  }
   if (kind === 'bugs') file.bugs = parseBugs(src, rel);
   if (kind === 'phase') {
     const t = PHASE_TITLE.exec(title);
@@ -167,7 +190,29 @@ export function parseTaskMarkdown(src: string, rel: string): { title: string; it
     const depth = indentStack.length;
     indentStack.push(indent);
     const text = m[3].trim();
-    items.push({ line: i, depth, state: markToState(m[2]), text, ...itemTitle(text), links: docLinks(text, rel), section });
+    const item: TaskItem = { line: i, depth, state: markToState(m[2]), text, ...itemTitle(text), links: docLinks(text, rel), section };
+    // Detail fields under the item (older format). Only lines at the item's own field level
+    // count, so a nested subtask's fields never become its parent's.
+    const end = blockEnd(lines, i, indent);
+    if (end > i + 1) item.hasDetails = true;
+    let fieldIndent = -1;
+    for (let j = i + 1; j < end; j++) {
+      if (!lines[j].trim()) continue;
+      const w = indentWidth(/^\s*/.exec(lines[j])![0]);
+      if (fieldIndent < 0) fieldIndent = w;
+      if (w !== fieldIndent || CHECKBOX.test(lines[j])) continue;
+      const dep = DEP_FIELD.exec(lines[j]);
+      if (!dep) continue;
+      if (/^depends/i.test(dep[1])) {
+        const ids = [...dep[2].matchAll(ID_IN_TEXT)].map((x) => x[0]);
+        if (ids.length) item.dependsOn = ids;
+      } else {
+        // Blocked by names open questions or outside needs as free text: keep the wording.
+        const reasons = dep[2].split(/;\s*/).map((r) => r.trim().replace(/\.$/, '')).filter((r) => r && !/^none$/i.test(r));
+        if (reasons.length) item.blockedBy = reasons;
+      }
+    }
+    items.push(item);
   });
 
   return { title: title || rel, items };
@@ -253,7 +298,7 @@ export class TaskWatcher {
   }
 
   snapshot(): TaskFile[] {
-    const order: Record<TaskFileKind, number> = { index: 0, phase: 1, bugs: 2, other: 3 };
+    const order: Record<TaskFileKind, number> = { index: 0, legacy: 0, phase: 1, bugs: 2, other: 3 };
     return [...this.files.values()].sort(
       (a, b) =>
         order[a.kind] - order[b.kind] ||
@@ -293,6 +338,25 @@ export class TaskWatcher {
       }
     }
     return out;
+  }
+
+  /** The markdown of a task entry and everything indented under it, for the progress view. */
+  async readBlock(rel: string, line: number): Promise<{ rel: string; markdown: string } | undefined> {
+    if (!this.files.has(rel)) return undefined;
+    const src = await fs.readFile(path.resolve(this.root, rel), 'utf8');
+    const lines = src.split(/\r?\n/);
+    const m = CHECKBOX.exec(lines[line] ?? '');
+    if (!m) return undefined;
+    const indent = indentWidth(m[1]);
+    const block = lines.slice(line, blockEnd(lines, line, indent));
+    const dedented = block.map((l) => {
+      let cut = 0;
+      while (cut < indent && (l[cut] === ' ' || l[cut] === '\t')) cut++;
+      return l.slice(cut);
+    });
+    // Drop the checkbox from the first line; the panel shows the id and title itself.
+    dedented[0] = dedented[0].replace(/^(?:[-*+]|\d+[.)])\s+\[[^\]]\]\s+/, '');
+    return { rel: `${rel}#L${line + 1}`, markdown: dedented.join('\n') };
   }
 
   docList(): string[] {

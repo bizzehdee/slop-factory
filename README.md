@@ -27,6 +27,23 @@ hooks load exactly as they do in the CLI.
   Claude Code still does the agentic work (tools, edits, shells, subagents, your rules); only the
   model calls go to your server.
 
+## Older TASK.md format
+
+Projects that still use a single `TASK.md` work too. When `TASK.md` has no phase table but does
+have checkbox tasks, the board reads it in the older layout:
+
+- Each `## Section` with tasks becomes a step on the spine. Sections without tasks (such as "How to
+  use this file") are skipped. The board opens on the first section already in progress.
+- Tasks are `- [ ] TASK-001: Title`, with subtasks such as `TASK-050.1` nested under their parent.
+  `[~]` shows as in progress. Section progress counts top-level tasks only.
+- An open task shows **waits on TASK-094** while anything in its **Depends on** field is unfinished,
+  and each **Blocked by** reason as written.
+- **Show details** opens the task's own entry (Deliverable, Scope, Acceptance criteria and so on) as
+  formatted markdown, since this format has no separate spec files.
+- **Start with a subagent** tells Claude to work from that entry: read its References, then build its
+  Deliverable within its Scope until every acceptance criterion is met. Override it with
+  `prompts.startLegacyTask` in `.claude-desk.json`.
+
 ## Specs, summaries and priorities
 
 The progress view follows the task-tracking standard: it uses the `[Spec]` / `[Summary]` links on
@@ -90,8 +107,21 @@ Providers are saved in `~/.claude-desk/config.json`, along with which project us
 ## Requirements
 
 - Node 18 or newer, on your `PATH`.
-- Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS
-  (on Linux that includes WebKitGTK 4.1).
+- Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS. On Linux:
+
+  ```bash
+  # Fedora
+  sudo dnf install dbus-devel pkgconf-pkg-config webkit2gtk4.1-devel openssl-devel curl wget file \
+    libappindicator-gtk3-devel librsvg2-devel libxdo-devel
+  sudo dnf group install "c-development"
+
+  # Ubuntu / Debian
+  sudo apt install libdbus-1-dev pkg-config libwebkit2gtk-4.1-dev build-essential curl wget file \
+    libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+  ```
+
+  A build that stops with "The system library `dbus-1` … was not found" is missing `dbus-devel`
+  (Fedora) or `libdbus-1-dev` (Ubuntu).
 - For your Claude subscription: Claude Code logged in. Run `claude` once and sign in, or create a
   token with `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN`.
 
@@ -110,7 +140,7 @@ npm run dev:browser
 # then open http://127.0.0.1:1420/?project=/absolute/path/to/your/project
 ```
 
-Tests (task parsing, file watching, priorities, prompts, providers, process tracking):
+Tests (task parsing in both formats, file watching, priorities, prompts, providers, process tracking):
 
 ```bash
 npm test

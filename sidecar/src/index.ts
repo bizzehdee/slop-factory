@@ -168,7 +168,9 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'readDocs': {
       const p = need(cmd.project);
-      return projectEmitter(p)({ type: 'docs', requestId: cmd.requestId, key: cmd.key, docs: await p.tasks.readDocs(cmd.paths) });
+      const blocks = await Promise.all((cmd.blocks ?? []).slice(0, 5).map((b) => p.tasks.readBlock(b.rel, b.line)));
+      const docs = [...blocks.filter((b): b is { rel: string; markdown: string } => !!b), ...(await p.tasks.readDocs(cmd.paths))];
+      return projectEmitter(p)({ type: 'docs', requestId: cmd.requestId, key: cmd.key, docs });
     }
     case 'runAction': {
       const p = need(cmd.project);

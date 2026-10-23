@@ -306,3 +306,97 @@ test('provider store normalises addresses, remembers per-project choice, and res
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// A made-up file in the older TASK.md layout: "## Section" groups, TASK-<n> ids, detail fields.
+const legacyMd = `# Tasks
+
+Ordered tasks. Status: \`[ ]\` not started, \`[~]\` in progress, \`[x]\` done.
+
+## How to use this file
+
+- Work on a task only when asked.
+
+## Essential
+
+- [x] TASK-001: Initialise the repository
+  - **Deliverable:** A git repository.
+  - **Depends on:** none
+- [x] TASK-002: Match engine
+  - **Deliverable:** An engine.
+  - **Subtasks** (do in order):
+    - [x] TASK-002.1: Skeleton
+      - **Depends on:** TASK-099
+    - [x] TASK-002.2: Rules
+  - **Depends on:** TASK-001
+
+## Release
+
+- [~] TASK-003: Signed builds
+  - **Deliverable:** Tagged builds.
+  - **Depends on:** TASK-002, TASK-004
+  - **Blocked by:** Open question 5 (hosting); Apple Developer account
+- [ ] TASK-004: Store page
+  - **Depends on:** none
+`;
+
+test('older TASK.md: sections, TASK ids, subtasks, dependencies and blocked reasons', () => {
+  const f = parseTaskFile(legacyMd, 'TASK.md');
+  assert.equal(f.kind, 'legacy');
+  assert.equal(f.phases, undefined);
+  assert.deepEqual(
+    f.items.map((i) => [i.id, i.state, i.depth, i.section]),
+    [
+      ['TASK-001', 'done', 0, 'Essential'],
+      ['TASK-002', 'done', 0, 'Essential'],
+      ['TASK-002.1', 'done', 1, 'Essential'],
+      ['TASK-002.2', 'done', 1, 'Essential'],
+      ['TASK-003', 'doing', 0, 'Release'],
+      ['TASK-004', 'todo', 0, 'Release'],
+    ],
+  );
+  const byId = Object.fromEntries(f.items.map((i) => [i.id, i]));
+  assert.equal(byId['TASK-002'].title, 'Match engine');
+  assert.deepEqual(byId['TASK-002'].dependsOn, ['TASK-001'], "a field after the subtasks still belongs to the parent");
+  assert.deepEqual(byId['TASK-002.1'].dependsOn, ['TASK-099'], "the subtask's own field");
+  assert.equal(byId['TASK-001'].dependsOn, undefined, '"none" is no dependency');
+  assert.deepEqual(byId['TASK-003'].dependsOn, ['TASK-002', 'TASK-004']);
+  assert.deepEqual(byId['TASK-003'].blockedBy, ['Open question 5 (hosting)', 'Apple Developer account']);
+  assert.ok(byId['TASK-003'].hasDetails);
+});
+
+test('a TASK.md with a phase table is still the current format', () => {
+  assert.equal(parseTaskFile(indexMd, 'TASK.md').kind, 'index');
+});
+
+test('older TASK.md: the progress view gets the task entry, dedented, without its checkbox', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-'));
+  let w;
+  try {
+    await writeFile(path.join(root, 'TASK.md'), legacyMd);
+    let latest = [];
+    w = new TaskWatcher(root, DEFAULT_TASK_CONFIG, (files) => (latest = files));
+    w.start();
+    await waitFor(() => latest.length === 1);
+    assert.equal(latest[0].kind, 'legacy');
+    const line = latest[0].items.find((i) => i.id === 'TASK-002.1').line;
+    const block = await w.readBlock('TASK.md', line);
+    assert.equal(block.rel, `TASK.md#L${line + 1}`);
+    assert.equal(block.markdown, 'TASK-002.1: Skeleton\n  - **Depends on:** TASK-099');
+    const parent = await w.readBlock('TASK.md', latest[0].items.find((i) => i.id === 'TASK-002').line);
+    assert.match(parent.markdown, /^TASK-002: Match engine\n  - \*\*Deliverable:\*\*/);
+    assert.match(parent.markdown, /TASK-002\.2: Rules\n  - \*\*Depends on:\*\* TASK-001$/);
+    assert.equal(await w.readBlock('TASK.md', 0), undefined, 'not a task line');
+  } finally {
+    await w?.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('older-format start prompt works from the entry, not a spec', () => {
+  const item = { key: 'TASK-003', kind: 'task', id: 'TASK-003', title: 'Signed builds', rel: 'TASK.md', done: false, legacy: true };
+  const prompt = promptFor('start', item, {});
+  assert.match(prompt, /Start work on TASK-003 \(Signed builds\) from TASK\.md/);
+  assert.match(prompt, /Deliverable/);
+  assert.doesNotMatch(prompt, /spec-TASK/);
+  assert.match(promptFor('reinvestigate', { ...item, done: true }, {}), /Read its entry in TASK\.md/);
+});

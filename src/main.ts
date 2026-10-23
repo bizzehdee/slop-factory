@@ -152,14 +152,19 @@ interface BoardItem extends ActionItem {
   line: number;
   text?: string; // tasks: the raw line text, for toggling
   docLinks: { label: string; rel: string }[];
+  hasDetails?: boolean;
+  dependsOn?: string[];
+  blockedBy?: string[];
 }
 
 const isSpec = (l: { label: string; rel: string }) => /spec/i.test(l.label) || /(^|\/)spec[-_]/i.test(l.rel);
 const isSummary = (l: { label: string; rel: string }) => /summar/i.test(l.label) || /(^|\/)summary[-_]/i.test(l.rel);
 
 function conventionDoc(p: Proj, kind: 'spec' | 'summary', item: { kind: 'task' | 'bug'; id?: string }): string | undefined {
-  if (!item.id) return undefined;
-  const rel = `${kind === 'spec' ? 'specs/spec' : 'summaries/summary'}-${item.kind === 'bug' ? 'BUG' : 'TASK'}-${item.id.slice(1)}.md`;
+  // Only "T<n>" / "B<n>" ids have standard spec and summary names.
+  const num = /^[TB](\d+)$/.exec(item.id ?? '')?.[1];
+  if (!num) return undefined;
+  const rel = `${kind === 'spec' ? 'specs/spec' : 'summaries/summary'}-${item.kind === 'bug' ? 'BUG' : 'TASK'}-${num}.md`;
   return p.docs.has(rel) ? rel : undefined;
 }
 
@@ -186,6 +191,10 @@ function taskItem(p: Proj, file: TaskFile, t: TaskItem): BoardItem {
     line: t.line,
     text: t.text,
     docLinks: t.links,
+    legacy: file.kind === 'legacy',
+    hasDetails: t.hasDetails,
+    dependsOn: t.dependsOn,
+    blockedBy: t.blockedBy,
     ...resolveDocs(p, { kind: 'task', id: t.id }, t.links),
   };
 }
@@ -209,7 +218,7 @@ function bugItem(p: Proj, file: TaskFile, b: BugEntry): BoardItem {
 function allItems(p: Proj): Map<string, BoardItem> {
   const map = new Map<string, BoardItem>();
   for (const f of p.tasks) {
-    if (f.kind === 'phase' || f.kind === 'other') for (const t of f.items) {
+    if (f.kind === 'phase' || f.kind === 'other' || f.kind === 'legacy') for (const t of f.items) {
       const it = taskItem(p, f, t);
       map.set(it.key, it);
     }
@@ -229,6 +238,7 @@ const toActionItem = (b: BoardItem): ActionItem => ({
   rel: b.rel,
   phase: b.phase,
   done: b.done,
+  legacy: b.legacy,
   spec: b.spec,
   summary: b.summary,
 });
@@ -508,11 +518,12 @@ document.addEventListener('pointerdown', (ev) => {
 function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
   const prioritised = p.priorities.includes(item.key);
   const items: MenuItem[] = [{ label: prioritised ? 'Remove priority' : 'Prioritise', run: () => send({ type: 'togglePriority', project: p.dir, key: item.key }) }];
+  const progressLabel = item.legacy && !item.spec && !item.summary ? 'Show details' : 'Show progress';
   if (!item.done) {
     items.push({ label: item.kind === 'bug' ? 'Start fix with a subagent' : 'Start with a subagent', run: () => runAction(p, 'start', item) });
-    items.push({ label: 'Show progress', run: () => showProgress(p, item) });
+    items.push({ label: progressLabel, run: () => showProgress(p, item) });
   } else {
-    items.push({ label: 'Show progress', run: () => showProgress(p, item) });
+    items.push({ label: progressLabel, run: () => showProgress(p, item) });
     items.push({ label: 'Summarise work done', run: () => runAction(p, 'summarise', item) });
     items.push({ label: 'Reinvestigate with a subagent', run: () => runAction(p, 'reinvestigate', item) });
   }
@@ -549,12 +560,16 @@ function docPaths(item: BoardItem): string[] {
   return [item.spec, item.summary, ...item.docLinks.map((l) => l.rel)].filter((x): x is string => !!x);
 }
 
+/** Older-format tasks carry their detail inline: show the entry itself. */
+const docBlocks = (item: BoardItem) => (item.legacy && item.hasDetails ? [{ rel: item.rel, line: item.line }] : undefined);
+const blockRel = (item: BoardItem) => `${item.rel}#L${item.line + 1}`;
+
 function showProgress(p: Proj, item: BoardItem): void {
   const requestId = Math.random().toString(36).slice(2);
   // Finished work opens on its summary; anything else on its spec.
-  const tab = (item.done ? item.summary : item.spec) ?? item.spec ?? item.summary ?? '';
+  const tab = (item.done ? item.summary : item.spec) ?? item.spec ?? item.summary ?? (docBlocks(item) ? blockRel(item) : '');
   docsView = { project: p.dir, key: item.key, requestId, tab, docs: [] };
-  send({ type: 'readDocs', project: p.dir, requestId, key: item.key, paths: docPaths(item) });
+  send({ type: 'readDocs', project: p.dir, requestId, key: item.key, paths: docPaths(item), blocks: docBlocks(item) });
   renderDocs();
   $('docs-panel').hidden = false;
   $('docs-close').focus();
@@ -565,10 +580,11 @@ function refreshDocs(p: Proj): void {
   const item = allItems(p).get(docsView.key);
   if (!item) return;
   docsView.requestId = Math.random().toString(36).slice(2);
-  send({ type: 'readDocs', project: p.dir, requestId: docsView.requestId, key: item.key, paths: docPaths(item) });
+  send({ type: 'readDocs', project: p.dir, requestId: docsView.requestId, key: item.key, paths: docPaths(item), blocks: docBlocks(item) });
 }
 
 function docLabel(item: BoardItem | undefined, rel: string): string {
+  if (item && rel === blockRel(item)) return 'Task';
   if (item?.spec === rel) return 'Spec';
   if (item?.summary === rel) return 'Summary';
   return item?.docLinks.find((l) => l.rel === rel)?.label || rel.split('/').pop()!.replace(/\.md$/, '');
@@ -608,13 +624,18 @@ function renderDocs(): void {
   const body = $('docs-body');
   const current = docs.find((d) => d.rel === docsView!.tab);
   if (current) {
-    body.innerHTML = md(current.markdown);
-    body.prepend(h('p', { class: 'docs-path' }, current.rel));
+    const isBlock = !!item && current.rel === blockRel(item);
+    // A task entry starts with "TASK-050: Title", which the panel header already shows.
+    body.innerHTML = md(isBlock ? current.markdown.replace(/^[^\n]*\n?/, '') : current.markdown);
+    body.prepend(h('p', { class: 'docs-path' }, isBlock ? `${item!.rel}, line ${item!.line + 1}` : current.rel));
   } else {
     const what = item?.kind === 'bug' ? 'bug' : 'task';
-    body.replaceChildren(
-      h('div', { class: 'docs-empty' }, h('p', {}, item?.done ? `This ${what} has no spec or summary.` : `No spec yet. Claude writes one before starting work on this ${what}.`)),
-    );
+    const message = item?.legacy
+      ? 'This task has no detail under it in the task file.'
+      : item?.done
+        ? `This ${what} has no spec or summary.`
+        : `No spec yet. Claude writes one before starting work on this ${what}.`;
+    body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, message)));
   }
 
   const actions = $('docs-actions');
@@ -675,6 +696,21 @@ function flag(): HTMLElement {
   return f;
 }
 
+/** "waits on TASK-094" for unfinished dependencies, and Blocked by reasons, on open tasks. */
+function waitHints(item: BoardItem, items: Map<string, BoardItem>): HTMLElement | null {
+  if (item.done || item.state === 'cancelled') return null;
+  const waiting = (item.dependsOn ?? []).filter((id) => {
+    const dep = items.get(id);
+    return dep && !dep.done && dep.state !== 'cancelled';
+  });
+  const parts: Child[] = [];
+  if (waiting.length) parts.push(h('span', { class: 'waits' }, `waits on ${waiting.join(', ')}`));
+  for (const r of item.blockedBy ?? []) parts.push(h('span', { class: 'blocked' }, `blocked: ${r}`));
+  return parts.length ? h('span', { class: 'hints' }, ...parts) : null;
+}
+
+let boardIndex = new Map<string, BoardItem>();
+
 function taskRow(p: Proj, file: TaskFile, t: TaskItem): HTMLElement {
   const item = taskItem(p, file, t);
   const prioritised = p.priorities.includes(item.key);
@@ -691,7 +727,15 @@ function taskRow(p: Proj, file: TaskFile, t: TaskItem): HTMLElement {
     'li',
     { class: `task ${t.state}${prioritised ? ' prioritised' : ''}`, style: `--depth:${t.depth}` },
     box,
-    h('span', { class: 'task-main' }, t.id ? h('span', { class: 'item-id' }, t.id) : null, h('span', { class: 'task-text' }, item.title), prioritised ? flag() : null, docChips(p, item)),
+    h(
+      'span',
+      { class: 'task-main' },
+      t.id ? h('span', { class: 'item-id' }, t.id) : null,
+      h('span', { class: 'task-text' }, item.title),
+      prioritised ? flag() : null,
+      docChips(p, item),
+      waitHints(item, boardIndex),
+    ),
     moreButton(p, item),
   );
 }
@@ -726,7 +770,7 @@ function renderPriorities(p: Proj): void {
     ...queued.map((it) =>
       h(
         'li',
-        { class: `priority ${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
+        { class: `priority kind-${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
         h('span', { class: 'item-id' }, it.id ?? '·'),
         h('button', { class: 'priority-title', type: 'button', onclick: () => showProgress(p, it), title: 'Show progress' }, it.title),
         h('span', { class: 'priority-state' }, it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : ''),
@@ -745,8 +789,11 @@ function renderTasks(): void {
     return;
   }
   renderPriorities(p);
+  boardIndex = allItems(p);
 
   const files = p.tasks;
+  const legacy = files.find((f) => f.kind === 'legacy');
+  if (legacy) return renderLegacy(p, legacy, files);
   const index = files.find((f) => f.kind === 'index');
   const phases = files.filter((f) => f.kind === 'phase');
   const bugs = files.find((f) => f.kind === 'bugs');
@@ -834,6 +881,84 @@ function renderTasks(): void {
   const doneAll = allTasks.filter((i) => i.state === 'done').length;
   summary.textContent = allTasks.length ? `${doneAll}/${allTasks.filter((i) => i.state !== 'cancelled').length}` : '';
   tasksEl.replaceChildren(...sections);
+}
+
+/**
+ * Older format: one TASK.md whose "## Section" headings group the tasks. Each section with
+ * tasks becomes a step on the spine; its status comes from its top-level tasks.
+ */
+function renderLegacy(p: Proj, file: TaskFile, files: TaskFile[]): void {
+  const sections: { name: string; items: TaskItem[] }[] = [];
+  for (const it of file.items) {
+    const name = it.section ?? 'Tasks';
+    let sec = sections[sections.length - 1];
+    if (!sec || sec.name !== name) sections.push((sec = { name, items: [] }));
+    sec.items.push(it);
+  }
+  const statusOf = (items: TaskItem[]) => {
+    const top = items.filter((i) => i.depth === 0 && i.state !== 'cancelled');
+    if (top.length && top.every((i) => i.state === 'done')) return 'done';
+    if (items.some((i) => i.state === 'done' || i.state === 'doing')) return 'in progress';
+    return 'planned';
+  };
+  // Sections in this format aren't always in delivery order: prefer one already in progress.
+  const current = sections.find((s) => statusOf(s.items) === 'in progress') ?? sections.find((s) => statusOf(s.items) !== 'done');
+  if (!p.userToggled && current) p.expanded = new Set([current.name]);
+
+  const spine = h('ol', { class: 'spine' });
+  sections.forEach((sec, n) => {
+    const status = statusOf(sec.items);
+    const top = sec.items.filter((i) => i.depth === 0);
+    const done = top.filter((i) => i.state === 'done').length;
+    const counted = top.filter((i) => i.state !== 'cancelled').length;
+    const open = p.expanded.has(sec.name);
+    spine.append(
+      h(
+        'li',
+        { class: `phase ${phaseStatusClass(status)}${sec === current ? ' current' : ''}` },
+        h(
+          'button',
+          {
+            class: 'phase-head',
+            type: 'button',
+            'aria-expanded': String(open),
+            onclick: () => {
+              p.userToggled = true;
+              if (open) p.expanded.delete(sec.name);
+              else p.expanded.add(sec.name);
+              renderTasks();
+            },
+          },
+          h('span', { class: 'phase-num' }, String(n + 1)),
+          h('span', { class: 'phase-main' }, h('span', { class: 'phase-goal' }, sec.name), h('span', { class: 'phase-status' }, status, `, ${done} of ${counted}`)),
+        ),
+        segmentBar(top),
+        open ? taskList(p, file, sec.items) : null,
+      ),
+    );
+  });
+
+  const parts: HTMLElement[] = [spine];
+  // A tasks/bugs.md beside an older TASK.md still shows.
+  const bugs = files.find((f) => f.kind === 'bugs');
+  if (bugs?.bugs) {
+    const openBugs = bugs.bugs.filter((b) => b.status === 'open' || b.status === 'in progress');
+    parts.push(
+      h(
+        'section',
+        { class: 'bugs' },
+        h('h3', {}, 'Bugs', h('span', { class: 'count' }, openBugs.length ? `${openBugs.length} open` : 'none open')),
+        h('ul', { class: 'bug-list' }, ...bugs.bugs.map((b) => bugRow(p, bugs, b))),
+      ),
+    );
+  }
+  for (const f of files.filter((x) => x.kind === 'other' || x.kind === 'phase')) {
+    parts.push(h('section', { class: 'loose' }, h('h3', {}, f.title), segmentBar(f.items), taskList(p, f, f.items)));
+  }
+
+  const top = file.items.filter((i) => i.depth === 0);
+  $('tasks-summary').textContent = `${top.filter((i) => i.state === 'done').length}/${top.filter((i) => i.state !== 'cancelled').length}`;
+  $('tasks').replaceChildren(...parts);
 }
 
 // ---------- projects list ----------
