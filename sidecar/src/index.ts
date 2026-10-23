@@ -29,7 +29,7 @@ if (process.env.ANTHROPIC_API_KEY && process.env.CLAUDE_DESK_ALLOW_API_KEY !== '
 // Events that make up the transcript are kept so a reloaded window can rebuild it.
 // State events (tasks, processes, ...) only need their latest value.
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
-  'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'permissionResolved', 'turnEnd', 'notice',
+  'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
 const LATEST = new Set<ProjectEvent['type']>(['session', 'busy', 'processes', 'tasks', 'priorities']);
 const MAX_TRANSCRIPT = 3000;
@@ -57,7 +57,7 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
       if (p.transcript.length > MAX_TRANSCRIPT) p.transcript.splice(0, p.transcript.length - MAX_TRANSCRIPT);
     }
     if (LATEST.has(e.type)) p.latest.set(e.type, e);
-    if (e.type === 'permissionRequest') p.openPermissions.add(e.id);
+    if (e.type === 'permissionRequest' || e.type === 'askQuestions') p.openPermissions.add(e.id);
     if (e.type === 'permissionResolved') p.openPermissions.delete(e.id);
     emit({ ...e, project: p.dir });
   };
@@ -103,7 +103,7 @@ async function openProject(dirIn: string, requested?: PermissionModeName): Promi
   const priorities = new Priorities(dir);
   out({ type: 'priorities', order: await priorities.load() });
 
-  const tasks = new TaskWatcher(dir, config, (files, docs) => out({ type: 'tasks', files, docs }));
+  const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
   const session = new AgentSession(dir, mode, out, provider);
   const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent };
   projects.set(dir, project);
@@ -162,6 +162,8 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).session.stopProcess(cmd.id);
     case 'permissionReply':
       return need(cmd.project).session.replyPermission(cmd.id, cmd.decision, cmd.message);
+    case 'answerQuestions':
+      return need(cmd.project).session.answerQuestions(cmd.id, cmd.answers);
     case 'setPermissionMode': {
       const p = need(cmd.project);
       const mode = await p.session.setPermissionMode(cmd.mode);

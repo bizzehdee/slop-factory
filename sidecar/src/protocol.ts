@@ -43,6 +43,8 @@ export type UiCommand =
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
   | { type: 'permissionReply'; project: string; id: string; decision: 'allow' | 'always' | 'deny'; message?: string }
+  // Answers to Claude's AskUserQuestion call, keyed by question text. No answers: dismissed.
+  | { type: 'answerQuestions'; project: string; id: string; answers?: Record<string, string> }
   | { type: 'setPermissionMode'; project: string; mode: PermissionModeName }
   | { type: 'toggleTask'; project: string; rel: string; line: number; text: string }
   | { type: 'togglePriority'; project: string; key: string }
@@ -153,6 +155,24 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** An item under an "Open questions" heading in plan.md, a docs/ document or a phase document. */
+export interface OpenQuestion {
+  id: string; // "<rel>#L<line>"
+  rel: string;
+  line: number; // 0-based
+  text: string; // markdown as written, continuation lines joined with \n
+  doc: string; // the document's H1, or its path
+  leftOpen?: string | true; // "(left open by the user, <date>)": the user chose to leave it undecided
+}
+
+/** One question from Claude's AskUserQuestion tool. Recommended options end their label "(Recommended)". */
+export interface AskedQuestion {
+  question: string;
+  header: string;
+  multiSelect: boolean;
+  options: { label: string; description: string }[];
+}
+
 export interface DocContent {
   rel: string;
   markdown: string;
@@ -173,10 +193,11 @@ export type ProjectEvent =
   | { type: 'toolUse'; id: string; name: string; input: unknown; parent: string | null }
   | { type: 'toolResult'; toolUseId: string; isError: boolean; preview: string }
   | { type: 'permissionRequest'; id: string; toolName: string; input: unknown; reason?: string }
+  | { type: 'askQuestions'; id: string; questions: AskedQuestion[] } // closed by permissionResolved
   | { type: 'permissionResolved'; id: string }
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
-  | { type: 'tasks'; files: TaskFile[]; docs: string[] } // docs: watched specs, summaries and the root plan.md that exist
+  | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
   | { type: 'priorities'; order: string[] }
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }
   | { type: 'replayDone' }

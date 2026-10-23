@@ -6,6 +6,7 @@ import path from 'node:path';
 import { parseTaskMarkdown, parseTaskFile, TaskWatcher, DEFAULT_TASK_CONFIG } from '../dist/tasks.js';
 import { ProcessTracker, kindOf } from '../dist/processes.js';
 import { Priorities, promptFor } from '../dist/actions.js';
+import { parseOpenQuestions } from '../dist/questions.js';
 
 const sample = `# Auth rework
 
@@ -459,5 +460,61 @@ test('permission mode is remembered per project, and the last choice becomes the
   } finally {
     delete process.env.CLAUDE_DESK_CONFIG_DIR;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('open questions come from the Open questions section, with left-open items marked', () => {
+  const src = [
+    '# Phase 2: Export',
+    '',
+    '## Tasks',
+    '- [ ] T3: Scheduler?',
+    '',
+    '## Open questions',
+    '',
+    '- Which SMTP provider do we use? Decides: Darren.',
+    '  Options so far: SES or Postmark.',
+    '- Do exports need a retention limit? (left open by the user, 2026-10-01)',
+    '',
+    '```',
+    '- not a question, in a fence',
+    '```',
+    '',
+    '## Revision history',
+    '- Which is not a question either?',
+  ].join('\n');
+  const qs = parseOpenQuestions(src, 'tasks/task_phase_2.md');
+  assert.deepEqual(qs.map((q) => [q.id, q.line, q.doc]), [
+    ['tasks/task_phase_2.md#L8', 7, 'Phase 2: Export'],
+    ['tasks/task_phase_2.md#L10', 9, 'Phase 2: Export'],
+  ]);
+  assert.equal(qs[0].text, 'Which SMTP provider do we use? Decides: Darren.\nOptions so far: SES or Postmark.');
+  assert.equal(qs[0].leftOpen, undefined);
+  assert.equal(qs[1].text, 'Do exports need a retention limit?');
+  assert.equal(qs[1].leftOpen, '2026-10-01');
+  assert.deepEqual(parseOpenQuestions('# Plan\n\n## Open questions\n\nNone.\n', 'plan.md'), []);
+  assert.deepEqual(parseOpenQuestions('# Plan\n\n## Open questions\n\n- None.\n', 'plan.md'), []);
+});
+
+test('the watcher gathers open questions from plan.md, docs/ and phase documents, plan first', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-'));
+  let w;
+  try {
+    await mkdir(path.join(root, 'docs'), { recursive: true });
+    await mkdir(path.join(root, 'tasks'), { recursive: true });
+    await writeFile(path.join(root, 'tasks/task_phase_1.md'), '# Phase 1: Build\n\n## Open questions\n- Phase question?\n');
+    await writeFile(path.join(root, 'docs/stack.md'), '# Stack\n\n## Open questions\n- Which database?\n');
+    await writeFile(path.join(root, 'plan.md'), '# Plan\n\n## Open questions\n- Who are the users?\n');
+    await writeFile(path.join(root, 'README.md'), '# Readme\n\n## Open questions\n- Not watched?\n');
+    let questions = [];
+    w = new TaskWatcher(root, DEFAULT_TASK_CONFIG, (_f, _d, q) => (questions = q));
+    w.start();
+    await waitFor(() => questions.length === 3);
+    assert.deepEqual(questions.map((q) => q.rel), ['plan.md', 'docs/stack.md', 'tasks/task_phase_1.md']);
+    await writeFile(path.join(root, 'docs/stack.md'), '# Stack\n\n## Open questions\nNone.\n');
+    await waitFor(() => questions.length === 2);
+  } finally {
+    await w?.stop();
+    await rm(root, { recursive: true, force: true });
   }
 });

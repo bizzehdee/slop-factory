@@ -27,6 +27,14 @@ hooks load exactly as they do in the CLI.
     (the default) or your local `HEAD`.
   - Show progress (a task's spec and summary) or Show phase document.
   - Summarise work done and reinvestigate with a subagent (finished items).
+- **Questions.** The right bar lists every open question: the items under **Open questions** in
+  `plan.md`, `docs/*.md` and the phase documents (as the project-planning and task-tracking
+  standards keep them), plus the questions in Claude's latest reply. Click one to open it beside the
+  conversation and type an answer, or tick several and choose **Ask as choices**: Claude then asks
+  them with its multiple-choice `AskUserQuestion` tool, two to four options each, with every option
+  it recommends marked. Those choice questions open by themselves when Claude asks, and answering a
+  question moves on to the next. Answers to documented questions ask Claude to record the decision
+  and take the question off its list. Items marked "(left open by the user, date)" show as left open.
 - **Project summary.** Click the project's name above the board to read its `plan.md`, rendered.
 - **Permission modes per project:** Ask before acting, Accept file edits, Auto mode, Plan only or
   Never ask, chosen in the message box. Auto mode lets Claude Code's safety classifier approve
@@ -212,8 +220,6 @@ Environment variables:
 
 ## Known gaps
 
-- Claude's multiple-choice questions (the `AskUserQuestion` tool) aren't rendered yet, so the tool
-  is turned off and Claude asks in plain text instead.
 - "View session" for a subagent's own transcript isn't there yet; its steps show folded under the
   Task call that started it.
 - Release builds bundle the sidecar's JavaScript but not Node itself, so Node must be installed.

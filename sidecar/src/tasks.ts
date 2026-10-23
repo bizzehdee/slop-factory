@@ -2,7 +2,8 @@ import { watch, type FSWatcher } from 'chokidar';
 import picomatch from 'picomatch';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { BugEntry, DocLink, PhaseRow, TaskFile, TaskFileKind, TaskItem, TaskState } from './protocol.js';
+import type { BugEntry, DocLink, OpenQuestion, PhaseRow, TaskFile, TaskFileKind, TaskItem, TaskState } from './protocol.js';
+import { isQuestionDoc, parseOpenQuestions } from './questions.js';
 
 // "- [ ] text", "* [x] text", "1. [/] text" ...
 const CHECKBOX = /^(\s*)(?:[-*+]|\d+[.)])\s+\[([ xX/~-])\]\s+(.*)$/;
@@ -254,6 +255,7 @@ const toRel = (root: string, abs: string) => path.relative(root, abs).split(path
 export class TaskWatcher {
   private files = new Map<string, TaskFile>();
   private docs = new Set<string>();
+  private questions = new Map<string, OpenQuestion[]>();
   private watcher?: FSWatcher;
   private timer?: NodeJS.Timeout;
   private isTask: (rel: string) => boolean;
@@ -263,7 +265,7 @@ export class TaskWatcher {
   constructor(
     private root: string,
     private config: TaskConfig,
-    private onChange: (files: TaskFile[], docs: string[]) => void,
+    private onChange: (files: TaskFile[], docs: string[], questions: OpenQuestion[]) => void,
   ) {
     this.isTask = picomatch(config.taskGlobs, { dot: false, nocase: true });
     const isDocGlob = picomatch(config.docGlobs ?? [], { dot: false, nocase: true });
@@ -280,7 +282,7 @@ export class TaskWatcher {
         if (!rel || rel.startsWith('..')) return false;
         if (this.isIgnored(rel) || this.isIgnored(rel + '/')) return true;
         // Skip non-task files, but keep walking directories.
-        return !!stats?.isFile() && !this.isTask(rel) && !this.isDoc(rel);
+        return !!stats?.isFile() && !this.isTask(rel) && !this.isDoc(rel) && !isQuestionDoc(rel);
       },
     });
     this.watcher
@@ -290,6 +292,7 @@ export class TaskWatcher {
         const rel = toRel(this.root, p);
         this.files.delete(rel);
         this.docs.delete(rel);
+        this.questions.delete(rel);
         this.schedule();
       })
       .on('ready', () => this.schedule())
@@ -367,24 +370,33 @@ export class TaskWatcher {
     return [...this.docs].sort();
   }
 
+  /** Every Open questions item across the plan and the task files, plan first. */
+  questionList(): OpenQuestion[] {
+    const rank = (rel: string) => (/^plan\.md$/i.test(rel) ? 0 : rel.startsWith('docs/') ? 1 : 2);
+    return [...this.questions.entries()]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b, undefined, { numeric: true }))
+      .flatMap(([, q]) => q);
+  }
+
   private async load(abs: string): Promise<void> {
     const rel = toRel(this.root, abs);
-    if (this.isDoc(rel) && !this.isTask(rel)) {
-      this.docs.add(rel);
-      return this.schedule();
-    }
-    if (!this.isTask(rel)) return;
+    const task = this.isTask(rel);
+    const question = task || isQuestionDoc(rel);
+    if (this.isDoc(rel) && !task) this.docs.add(rel);
+    if (!question) return this.schedule();
     try {
       const [src, st] = await Promise.all([fs.readFile(abs, 'utf8'), fs.stat(abs)]);
-      this.files.set(rel, { ...parseTaskFile(src, rel), mtime: st.mtimeMs });
+      if (task) this.files.set(rel, { ...parseTaskFile(src, rel), mtime: st.mtimeMs });
+      this.questions.set(rel, parseOpenQuestions(src, rel));
     } catch {
       this.files.delete(rel);
+      this.questions.delete(rel);
     }
     this.schedule();
   }
 
   private schedule(): void {
     clearTimeout(this.timer);
-    this.timer = setTimeout(() => this.onChange(this.snapshot(), this.docList()), 60);
+    this.timer = setTimeout(() => this.onChange(this.snapshot(), this.docList(), this.questionList()), 60);
   }
 }

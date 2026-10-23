@@ -1752,3 +1752,235 @@ textarea {
 .task.done .hints {
   display: none;
 }
+
+/* ---------- questions: a compact list in the right bar, each opening in the docs panel ---------- */
+
+.questions {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.questions .pane-body {
+  display: grid;
+  gap: 12px;
+}
+.q-group h3 {
+  margin: 0 0 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.q-group.asking h3 {
+  color: var(--clay);
+}
+.q-doc {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+}
+.q-doc:hover {
+  color: var(--clay);
+}
+.q-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1px;
+}
+.q-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  padding: 4px 6px 4px 4px;
+  border-radius: var(--radius-s);
+}
+.q-row:hover,
+.q-row.open {
+  background: var(--raised);
+}
+.q-pick {
+  margin: 3px 0 0;
+  accent-color: var(--clay);
+}
+.q-dot {
+  width: 7px;
+  height: 7px;
+  margin: 6px 0 0 4px;
+  border-radius: 50%;
+  background: var(--clay);
+}
+.q-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  font-size: var(--step--1);
+  line-height: 1.4;
+  cursor: pointer;
+}
+.q-label {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+}
+.q-row.left-open .q-label {
+  color: var(--muted);
+}
+.q-open:hover .q-label {
+  color: var(--clay);
+}
+.q-tag {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  background: var(--raised);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+.q-row:hover .q-tag,
+.q-row.open .q-tag {
+  background: var(--panel);
+}
+.q-tag.draft {
+  color: var(--clay);
+}
+.q-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.q-actions .button {
+  font-size: 0.75rem;
+}
+
+/* the popup */
+.q-full {
+  line-height: 1.55;
+}
+.q-full > :first-child {
+  margin-top: 0;
+}
+.docs-body > .q-tag {
+  display: inline-block;
+  margin: 0 0 10px;
+}
+.q-answer-label {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  font-size: var(--step--1);
+  font-weight: 600;
+}
+.q-answer {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--panel);
+  font-weight: 400;
+  font-size: var(--step-0);
+}
+.q-answer:focus {
+  border-color: var(--clay);
+  outline: none;
+}
+.ask-form {
+  display: grid;
+  gap: 22px;
+}
+.ask-q {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.ask-q legend {
+  display: grid;
+  gap: 4px;
+  padding: 0;
+  margin-bottom: 8px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ask-header {
+  justify-self: start;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--clay);
+}
+.ask-hint {
+  margin: -4px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.ask-option {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+.ask-option input {
+  margin-top: 4px;
+  accent-color: var(--clay);
+}
+.ask-option:has(input:checked) {
+  border-color: var(--clay);
+  background: color-mix(in srgb, var(--clay) 7%, transparent);
+}
+.ask-option.recommended {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--clay) 60%, var(--line));
+}
+.ask-option-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ask-option-label {
+  font-weight: 500;
+}
+.ask-option-desc {
+  color: var(--muted);
+  font-size: var(--step--1);
+  line-height: 1.45;
+}
+.ask-option.other {
+  align-items: center;
+}
+.ask-other-text {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  font: inherit;
+  color: inherit;
+}
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--clay);
+  color: var(--action-ink);
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: 1px;
+}

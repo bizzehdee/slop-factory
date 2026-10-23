@@ -7,7 +7,7 @@ import {
   type PermissionUpdate,
 } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 
@@ -59,6 +59,16 @@ function resultPreview(content: unknown): string {
   return '';
 }
 
+function askedQuestions(input: Record<string, unknown>): AskedQuestion[] {
+  const list = Array.isArray(input.questions) ? (input.questions as Record<string, unknown>[]) : [];
+  return list.map((q) => ({
+    question: String(q.question ?? ''),
+    header: String(q.header ?? ''),
+    multiSelect: !!q.multiSelect,
+    options: (Array.isArray(q.options) ? (q.options as Record<string, unknown>[]) : []).map((o) => ({ label: String(o.label ?? ''), description: String(o.description ?? '') })),
+  }));
+}
+
 export class AgentSession {
   private q?: Query;
   private input = new InputQueue();
@@ -89,9 +99,7 @@ export class AgentSession {
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         permissionMode: this.permissionMode,
         includePartialMessages: true,
-        // The SDK expects the host to render AskUserQuestion; this UI doesn't yet,
-        // so Claude asks clarifying questions in plain text instead.
-        disallowedTools: ['AskUserQuestion'],
+        // AskUserQuestion reaches canUseTool like any tool; the Questions panel renders it.
         canUseTool: (toolName, input, opts) => this.askPermission(toolName, input, opts),
         stderr: (data) => process.stderr.write(`[claude] ${data}`),
         ...(env ? { env } : {}),
@@ -152,6 +160,16 @@ export class AgentSession {
     this.emit({ type: 'permissionResolved', id });
   }
 
+  /** Answer an AskUserQuestion call: answers keyed by question text, or none to dismiss it. */
+  answerQuestions(id: string, answers?: Record<string, string>): void {
+    const p = this.permissions.get(id);
+    if (!p) return;
+    this.permissions.delete(id);
+    if (!answers) p.resolve({ behavior: 'deny', message: 'The user dismissed these questions and will answer in the conversation instead.' });
+    else p.resolve({ behavior: 'allow', updatedInput: { ...p.input, answers } });
+    this.emit({ type: 'permissionResolved', id });
+  }
+
   close(): void {
     for (const [id] of this.permissions) this.replyPermission(id, 'deny', 'Session closed.');
     this.input.close();
@@ -173,7 +191,8 @@ export class AgentSession {
           resolve({ behavior: 'deny', message: 'Cancelled.' });
         }
       });
-      this.emit({ type: 'permissionRequest', id, toolName, input, reason: opts.decisionReason });
+      if (toolName === 'AskUserQuestion') this.emit({ type: 'askQuestions', id, questions: askedQuestions(input) });
+      else this.emit({ type: 'permissionRequest', id, toolName, input, reason: opts.decisionReason });
     });
   }
 
