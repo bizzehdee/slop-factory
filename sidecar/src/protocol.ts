@@ -47,6 +47,10 @@ export type UiCommand =
   | { type: 'loginCode'; code: string }
   | { type: 'cancelLogin' }
   | { type: 'openUrl'; url: string } // https only, in the default browser
+  | { type: 'listMcp'; project?: string }
+  | { type: 'saveMcp'; project?: string; server: McpEntry; previous?: { name: string; scope: McpScope } }
+  | { type: 'removeMcp'; project?: string; name: string; scope: McpScope }
+  | { type: 'restartSession'; project: string }
   | { type: 'send'; project: string; text: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
@@ -63,6 +67,16 @@ export type UiCommand =
   | { type: 'deleteProvider'; id: string }
   | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string }
   | { type: 'createProject'; requestId: string; request: NewProjectRequest };
+
+/** Where an MCP server is configured: every project, this project for everyone (.mcp.json), or this project for you. */
+export type McpScope = 'user' | 'project' | 'local';
+
+export interface McpEntry {
+  name: string;
+  scope: McpScope;
+  // As Claude Code stores it: { type?: 'stdio', command, args?, env? } or { type: 'http' | 'sse', url, headers? }
+  config: Record<string, unknown>;
+}
 
 /** Whether Claude Code is signed in, from "claude auth status". */
 export interface AuthState {
@@ -242,6 +256,7 @@ export type GlobalEvent =
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
   | { type: 'editors'; list: EditorInfo[] }
   | { type: 'auth'; state: AuthState }
+  | { type: 'mcpServers'; project?: string; list: McpEntry[]; error?: string } // error: the change asked for failed
   | { type: 'loginUrl'; url: string }
   | { type: 'loginLine'; line: string }
   | { type: 'loginDone'; ok: boolean; error?: string }

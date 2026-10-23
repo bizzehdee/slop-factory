@@ -13,6 +13,7 @@ import { ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
+import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -128,6 +129,17 @@ async function closeProject(dir: string): Promise<void> {
   emit({ type: 'closed', project: dir });
 }
 
+/** Restart a project's Claude Code session, e.g. so it picks up changed MCP servers. */
+function restartSession(p: Project): void {
+  const mode = p.session.mode;
+  p.session.close();
+  p.session = new AgentSession(p.dir, mode, p.out, p.session.provider);
+  p.session.processes.clear();
+  p.session.start();
+  p.latest.delete('session');
+  p.out({ type: 'notice', level: 'info', text: 'Restarted Claude Code. This starts a new conversation.' });
+}
+
 /** Restart a project's Claude Code session on another provider. The task board keeps running. */
 async function switchProvider(p: Project, providerId: string): Promise<void> {
   const provider = await providers.setForProject(p.dir, providerId);
@@ -197,6 +209,23 @@ async function handle(cmd: UiCommand): Promise<void> {
       return login.sendCode(cmd.code);
     case 'cancelLogin':
       return login.cancel();
+    case 'listMcp':
+      emit({ type: 'mcpServers', project: cmd.project, list: await listMcp(cmd.project) });
+      return;
+    case 'saveMcp':
+    case 'removeMcp': {
+      let error: string | undefined;
+      try {
+        if (cmd.type === 'saveMcp') await saveMcp(cmd.project, cmd.server, cmd.previous);
+        else await removeMcp(cmd.project, cmd.name, cmd.scope);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+      emit({ type: 'mcpServers', project: cmd.project, list: await listMcp(cmd.project), error });
+      return;
+    }
+    case 'restartSession':
+      return restartSession(need(cmd.project));
     case 'openUrl':
       if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
       return openInFileManager(cmd.url);

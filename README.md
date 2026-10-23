@@ -81,9 +81,21 @@ Priorities aren't part of the standard, and editing task lines would count as a 
 so they live in `.claude-desk/priorities.json` in the project, keyed by `T<n>` / `B<n>`. Commit it
 to share the queue, or add it to `.gitignore`.
 
+## Settings
+
+The gear beside **Projects** opens Settings:
+
+- **Appearance:** match the system, or always light or dark.
+- **Model:** which model the current project uses (your Claude subscription or a local model), and
+  your saved local models.
+- **MCP servers:** add, edit or remove the servers Claude Code connects to, for all your projects,
+  for this project and everyone who clones it (`.mcp.json`), or for this project just for you.
+  Changes go through Claude Code's own `claude mcp` commands and apply when Claude Code next starts
+  in a project; **Restart it now** does that straight away.
+
 ## Local models (Ollama, llama.cpp)
 
-Pick **Use a local model…** from the model menu in the message box. The dialog fills in the usual
+Open Settings and choose **Add a local model…**. The dialog fills in the usual
 address for each server, finds the models it has loaded, and switches the current project to it.
 
 | Server | Default address | Notes |

@@ -11,6 +11,9 @@
         <nav class="projects" aria-labelledby="projects-heading">
           <div class="pane-head">
             <h2 id="projects-heading">Projects</h2>
+            <button id="open-settings" class="icon-button" type="button" title="Settings" aria-label="Settings">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4" /><path d="M8 1.8v2M8 12.2v2M1.8 8h2M12.2 8h2M3.6 3.6l1.4 1.4M11 11l1.4 1.4M3.6 12.4 5 11M11 5l1.4-1.4" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" /></svg>
+            </button>
             <button id="add-project" class="icon-button" type="button" title="New or open a project" aria-label="New or open a project" aria-haspopup="menu" aria-expanded="false">
               <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
             </button>
@@ -56,10 +59,6 @@
             <label for="prompt" class="visually-hidden">Message Claude</label>
             <textarea id="prompt" rows="2" placeholder="Open a project to start" disabled></textarea>
             <div class="composer-row">
-              <label class="mode">
-                <span class="visually-hidden">Model</span>
-                <select id="provider" title="Which model Claude Code uses for this project" disabled></select>
-              </label>
               <label class="mode">
                 <span class="visually-hidden">Permission mode</span>
                 <select id="permission-mode" title="How Claude asks before acting" disabled>
@@ -169,6 +168,87 @@
           <button class="button primary" type="submit" id="provider-save">Save and use</button>
         </div>
       </form>
+    </dialog>
+    <dialog id="settings-dialog" class="dialog settings" aria-labelledby="settings-title">
+      <div class="dialog-body">
+        <header class="settings-head">
+          <h2 id="settings-title">Settings</h2>
+          <button id="settings-close" class="icon-button" type="button" title="Close" aria-label="Close settings">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+          </button>
+        </header>
+
+        <section class="settings-section" aria-labelledby="settings-theme">
+          <h3 id="settings-theme">Appearance</h3>
+          <fieldset class="kind-picker" id="theme-picker">
+            <legend class="visually-hidden">Theme</legend>
+            <label><input type="radio" name="theme" value="system" checked /> Match system</label>
+            <label><input type="radio" name="theme" value="light" /> Light</label>
+            <label><input type="radio" name="theme" value="dark" /> Dark</label>
+          </fieldset>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-model">
+          <h3 id="settings-model">Model</h3>
+          <p id="model-for" class="settings-note"></p>
+          <div class="field-row">
+            <label class="visually-hidden" for="provider">Model for this project</label>
+            <select id="provider" disabled></select>
+            <button id="add-local-model" class="button" type="button">Add a local model…</button>
+          </div>
+          <ul id="local-models" class="settings-list"></ul>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-mcp">
+          <h3 id="settings-mcp">MCP servers</h3>
+          <p class="settings-note">
+            Tools and data sources Claude Code connects to. A change applies the next time Claude Code starts in a project.
+            <button id="mcp-restart" class="link-button" type="button" hidden>Restart it now</button>
+          </p>
+          <div id="mcp-list"></div>
+          <p id="mcp-error" class="field-hint warn-text" role="alert" hidden></p>
+          <form id="mcp-form" class="mcp-form" hidden>
+            <div class="field-pair">
+              <label class="field">
+                <span>Name</span>
+                <input name="name" type="text" required pattern="[A-Za-z0-9_\-]+" spellcheck="false" autocomplete="off" placeholder="github" />
+              </label>
+              <label class="field">
+                <span>Available in</span>
+                <select name="scope">
+                  <option value="user">All my projects</option>
+                  <option value="project">This project, shared (.mcp.json)</option>
+                  <option value="local">This project, just me</option>
+                </select>
+              </label>
+            </div>
+            <fieldset class="kind-picker">
+              <legend>Connection</legend>
+              <label><input type="radio" name="transport" value="stdio" checked /> Command</label>
+              <label><input type="radio" name="transport" value="http" /> HTTP</label>
+              <label><input type="radio" name="transport" value="sse" /> SSE</label>
+            </fieldset>
+            <label class="field" id="mcp-command-field">
+              <span>Command</span>
+              <input name="command" type="text" spellcheck="false" placeholder="npx -y @modelcontextprotocol/server-github" />
+            </label>
+            <label class="field" id="mcp-url-field" hidden>
+              <span>Address</span>
+              <input name="url" type="url" spellcheck="false" placeholder="https://example.com/mcp" />
+            </label>
+            <label class="field">
+              <span id="mcp-pairs-label">Environment variables <small>(one KEY=value per line)</small></span>
+              <textarea name="pairs" rows="2" spellcheck="false"></textarea>
+            </label>
+            <div class="dialog-actions">
+              <span class="spacer"></span>
+              <button id="mcp-cancel" class="button quiet" type="button">Cancel</button>
+              <button class="button primary" type="submit">Save server</button>
+            </div>
+          </form>
+          <button id="mcp-add" class="button" type="button">Add a server</button>
+        </section>
+      </div>
     </dialog>
     <dialog id="login-dialog" class="dialog" aria-labelledby="login-title">
       <div class="dialog-body">
