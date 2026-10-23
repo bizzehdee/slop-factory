@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Desk</title>
+  </head>
+  <body>
+    <main class="layout">
+      <aside class="sidebar tasks-pane">
+        <nav class="projects" aria-labelledby="projects-heading">
+          <div class="pane-head">
+            <h2 id="projects-heading">Projects</h2>
+            <button id="add-project" class="icon-button" type="button" title="Open a project" aria-label="Open a project">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            </button>
+          </div>
+          <ul id="project-list" class="project-list"></ul>
+        </nav>
+
+        <div id="project-header" class="project-header" hidden>
+          <h1 id="project-name"></h1>
+          <p id="project-path" class="project-path"></p>
+          <p id="framework-badge" class="framework-badge"></p>
+        </div>
+
+        <section id="priorities-section" class="priorities" aria-labelledby="priorities-heading" hidden>
+          <div class="pane-head">
+            <h2 id="priorities-heading">Priorities</h2>
+            <span id="priorities-count" class="pane-meta"></span>
+          </div>
+          <ol id="priorities" class="pane-body priority-list"></ol>
+        </section>
+
+        <section id="delivery-section" aria-labelledby="tasks-heading" hidden>
+          <div class="pane-head">
+            <h2 id="tasks-heading">Delivery</h2>
+            <span id="tasks-summary" class="pane-meta"></span>
+          </div>
+          <div id="tasks" class="pane-body"></div>
+        </section>
+      </aside>
+
+      <section class="chat-pane" aria-label="Conversation">
+        <div id="transcripts" class="transcripts"></div>
+        <div id="activity" class="activity" aria-live="polite" hidden>
+          <span class="spinner" aria-hidden="true">✻</span><span id="activity-text">Working</span>
+        </div>
+        <form id="composer" class="composer">
+          <div class="composer-box">
+            <label for="prompt" class="visually-hidden">Message Claude</label>
+            <textarea id="prompt" rows="2" placeholder="Open a project to start" disabled></textarea>
+            <div class="composer-row">
+              <label class="mode">
+                <span class="visually-hidden">Model</span>
+                <select id="provider" title="Which model Claude Code uses for this project" disabled></select>
+              </label>
+              <label class="mode">
+                <span class="visually-hidden">Permission mode</span>
+                <select id="permission-mode" title="How Claude asks before acting" disabled>
+                  <option value="default">Ask before acting</option>
+                  <option value="acceptEdits">Accept file edits</option>
+                  <option value="plan">Plan only</option>
+                  <option value="bypassPermissions">Never ask</option>
+                </select>
+              </label>
+              <span class="composer-hint">Shift+Enter for a new line</span>
+              <button id="stop" type="button" class="round-button stop" title="Stop Claude" aria-label="Stop Claude" hidden>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>
+              </button>
+              <button id="send" type="submit" class="round-button send" title="Send" aria-label="Send" disabled>
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <aside id="docs-panel" class="docs-panel" aria-labelledby="docs-title" hidden>
+          <header class="docs-head">
+            <div class="docs-title-wrap">
+              <span id="docs-ref" class="docs-ref"></span>
+              <h2 id="docs-title"></h2>
+            </div>
+            <button id="docs-close" class="icon-button" type="button" title="Close" aria-label="Close progress">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            </button>
+          </header>
+          <div id="docs-tabs" class="docs-tabs" role="tablist"></div>
+          <div id="docs-body" class="docs-body" role="tabpanel"></div>
+          <footer id="docs-actions" class="docs-actions"></footer>
+        </aside>
+      </section>
+
+      <aside class="sidebar side-pane">
+        <section aria-labelledby="proc-heading">
+          <div class="pane-head">
+            <h2 id="proc-heading">Running</h2>
+            <span id="proc-summary" class="pane-meta"></span>
+          </div>
+          <div id="processes" class="pane-body"></div>
+        </section>
+        <section aria-labelledby="session-heading" class="session-section">
+          <div class="pane-head">
+            <h2 id="session-heading">Session</h2>
+          </div>
+          <dl id="session" class="session"></dl>
+        </section>
+      </aside>
+    </main>
+
+    <div id="menu" class="menu" role="menu" hidden></div>
+
+    <dialog id="provider-dialog" class="dialog" aria-labelledby="provider-dialog-title">
+      <form id="provider-form" method="dialog">
+        <h2 id="provider-dialog-title">Use a local model</h2>
+        <p class="dialog-lead">
+          Claude Code keeps doing the work (tools, edits, subagents, your project rules). Only the model calls go to your
+          server, which must speak Anthropic's Messages API. Ollama and llama.cpp's llama-server both do.
+        </p>
+        <fieldset class="kind-picker">
+          <legend>Server</legend>
+          <label><input type="radio" name="kind" value="ollama" checked /> Ollama</label>
+          <label><input type="radio" name="kind" value="llamacpp" /> llama.cpp</label>
+          <label><input type="radio" name="kind" value="custom" /> Other</label>
+        </fieldset>
+        <label class="field">
+          <span>Address</span>
+          <input name="baseUrl" type="url" required spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>Token <small>(sent as a Bearer token; local servers usually ignore it)</small></span>
+          <input name="authToken" type="text" spellcheck="false" autocomplete="off" />
+        </label>
+        <div class="field">
+          <label for="provider-model">Model</label>
+          <div class="field-row">
+            <input id="provider-model" name="model" list="provider-models" required spellcheck="false" placeholder="e.g. qwen3-coder" />
+            <button id="probe" class="button" type="button">Find models</button>
+          </div>
+          <datalist id="provider-models"></datalist>
+          <p id="probe-status" class="field-hint" aria-live="polite"></p>
+        </div>
+        <label class="field">
+          <span>Fast model <small>(optional, for quick background calls; defaults to the model above)</small></span>
+          <input name="smallModel" list="provider-models" spellcheck="false" />
+        </label>
+        <label class="field">
+          <span>Name <small>(optional)</small></span>
+          <input name="name" type="text" />
+        </label>
+        <p class="field-hint">Use a model with tool calling and a long context (32k tokens or more). Coding models such as Qwen3 Coder work best.</p>
+        <div class="dialog-actions">
+          <button id="provider-delete" class="button quiet danger" type="button" hidden>Delete</button>
+          <span class="spacer"></span>
+          <button class="button quiet" type="button" value="cancel" id="provider-cancel">Cancel</button>
+          <button class="button primary" type="submit" id="provider-save">Save and use</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

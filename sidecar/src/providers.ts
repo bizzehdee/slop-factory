@@ -1,0 +1,153 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import type { ProviderConfig } from './protocol.js';
+
+// Where model providers live. Each project remembers which one it uses.
+// Claude Code talks to any server that speaks Anthropic's Messages API (/v1/messages),
+// which Ollama and llama.cpp's llama-server both do natively.
+
+export const SUBSCRIPTION: ProviderConfig = { id: 'subscription', name: 'Claude subscription', kind: 'subscription' };
+
+export const PRESETS: Record<'ollama' | 'llamacpp' | 'custom', Omit<ProviderConfig, 'id' | 'name' | 'model'>> = {
+  ollama: { kind: 'ollama', baseUrl: 'http://localhost:11434', authToken: 'ollama' },
+  llamacpp: { kind: 'llamacpp', baseUrl: 'http://127.0.0.1:8080', authToken: 'local' },
+  custom: { kind: 'custom', baseUrl: 'http://127.0.0.1:4000', authToken: '' },
+};
+
+interface DeskState {
+  providers: ProviderConfig[];
+  projectProvider: Record<string, string>;
+}
+
+export function configDir(): string {
+  return process.env.CLAUDE_DESK_CONFIG_DIR || path.join(os.homedir(), '.claude-desk');
+}
+
+export class ProviderStore {
+  private state: DeskState = { providers: [], projectProvider: {} };
+  private file = path.join(configDir(), 'config.json');
+
+  async load(): Promise<void> {
+    try {
+      const raw = JSON.parse(await fs.readFile(this.file, 'utf8'));
+      this.state = {
+        providers: Array.isArray(raw.providers) ? raw.providers.filter(isProvider) : [],
+        projectProvider: raw.projectProvider && typeof raw.projectProvider === 'object' ? raw.projectProvider : {},
+      };
+    } catch {
+      /* first run */
+    }
+  }
+
+  list(): ProviderConfig[] {
+    return [SUBSCRIPTION, ...this.state.providers];
+  }
+
+  get(id: string | undefined): ProviderConfig {
+    return this.list().find((p) => p.id === id) ?? SUBSCRIPTION;
+  }
+
+  forProject(dir: string): ProviderConfig {
+    return this.get(this.state.projectProvider[dir]);
+  }
+
+  async setForProject(dir: string, id: string): Promise<ProviderConfig> {
+    const p = this.get(id);
+    if (p.id === SUBSCRIPTION.id) delete this.state.projectProvider[dir];
+    else this.state.projectProvider[dir] = p.id;
+    await this.save();
+    return p;
+  }
+
+  async upsert(input: ProviderConfig): Promise<ProviderConfig> {
+    if (input.kind === 'subscription') throw new Error("The subscription provider can't be edited.");
+    if (!input.baseUrl || !/^https?:\/\//i.test(input.baseUrl)) throw new Error('Base URL must start with http:// or https://');
+    if (!input.model?.trim()) throw new Error('Choose a model.');
+    const p: ProviderConfig = {
+      id: input.id || `${input.kind}-${Date.now().toString(36)}`,
+      name: input.name?.trim() || `${input.kind === 'ollama' ? 'Ollama' : input.kind === 'llamacpp' ? 'llama.cpp' : 'Local'} (${input.model})`,
+      kind: input.kind,
+      baseUrl: input.baseUrl.replace(/\/+$/, '').replace(/\/v1$/, ''),
+      authToken: input.authToken ?? '',
+      model: input.model.trim(),
+      smallModel: input.smallModel?.trim() || undefined,
+    };
+    const i = this.state.providers.findIndex((x) => x.id === p.id);
+    if (i >= 0) this.state.providers[i] = p;
+    else this.state.providers.push(p);
+    await this.save();
+    return p;
+  }
+
+  async remove(id: string): Promise<string[]> {
+    this.state.providers = this.state.providers.filter((p) => p.id !== id);
+    const affected = Object.entries(this.state.projectProvider).filter(([, v]) => v === id).map(([k]) => k);
+    for (const dir of affected) delete this.state.projectProvider[dir];
+    await this.save();
+    return affected;
+  }
+
+  private async save(): Promise<void> {
+    await fs.mkdir(path.dirname(this.file), { recursive: true });
+    await fs.writeFile(this.file, JSON.stringify(this.state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  }
+}
+
+function isProvider(x: unknown): x is ProviderConfig {
+  const p = x as ProviderConfig;
+  return !!p && typeof p.id === 'string' && typeof p.kind === 'string' && p.kind !== 'subscription';
+}
+
+/**
+ * The environment and model for a Claude Code session on this provider.
+ * Subscription: inherit the environment (minus any stray API key, removed at start-up).
+ * Local: point every model role at the chosen model so nothing tries to reach Anthropic.
+ */
+export function sessionSettings(p: ProviderConfig): { env?: Record<string, string | undefined>; model?: string } {
+  if (p.kind === 'subscription' || !p.baseUrl || !p.model) return {};
+  const small = p.smallModel || p.model;
+  const env: Record<string, string | undefined> = {
+    ...process.env,
+    ANTHROPIC_BASE_URL: p.baseUrl,
+    ANTHROPIC_AUTH_TOKEN: p.authToken || 'local',
+    ANTHROPIC_MODEL: p.model,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: p.model,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: p.model,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: small,
+    ANTHROPIC_SMALL_FAST_MODEL: small,
+    CLAUDE_CODE_SUBAGENT_MODEL: p.model,
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+    CLAUDE_AGENT_SDK_CLIENT_APP: 'claude-desk/0.1.0',
+  };
+  // Don't let subscription credentials or an API key override the local server.
+  delete env.ANTHROPIC_API_KEY;
+  delete env.CLAUDE_CODE_OAUTH_TOKEN;
+  return { env, model: p.model };
+}
+
+/** Ask a server which models it has. Works with Ollama and llama-server (OpenAI-style /v1/models). */
+export async function probeModels(baseUrl: string, authToken?: string): Promise<string[]> {
+  const base = baseUrl.replace(/\/+$/, '').replace(/\/v1$/, '');
+  const headers: Record<string, string> = {};
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
+  const ctrl = AbortSignal.timeout(5000);
+  const tryJson = async (url: string) => {
+    const res = await fetch(url, { headers, signal: ctrl });
+    if (!res.ok) throw new Error(`${url} answered ${res.status}`);
+    return res.json() as Promise<Record<string, unknown>>;
+  };
+  let names: string[] = [];
+  try {
+    const j = await tryJson(`${base}/v1/models`);
+    names = ((j.data as { id?: string }[]) ?? []).map((m) => m.id ?? '').filter(Boolean);
+  } catch (first) {
+    try {
+      const j = await tryJson(`${base}/api/tags`); // Ollama's own listing
+      names = ((j.models as { name?: string }[]) ?? []).map((m) => m.name ?? '').filter(Boolean);
+    } catch {
+      throw first instanceof Error && first.name === 'TimeoutError' ? new Error(`No answer from ${base} within 5 seconds.`) : new Error(`Couldn't reach ${base}: ${String((first as Error).message ?? first)}`);
+    }
+  }
+  return [...new Set(names)].sort();
+}

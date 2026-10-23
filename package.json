@@ -1,0 +1,33 @@
+{
+  "name": "claude-desk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sidecar:install": "npm --prefix sidecar install",
+    "sidecar:build": "npm --prefix sidecar run build",
+    "dev": "vite",
+    "dev:browser": "npm run sidecar:build && concurrently -k -n bridge,vite \"node scripts/dev-bridge.mjs\" \"vite\"",
+    "build": "tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "test": "npm --prefix sidecar test"
+  },
+  "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource-variable/jetbrains-mono": "^5.3.0",
+    "@fontsource-variable/source-serif-4": "^5.3.1",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "dompurify": "^3.4.17",
+    "marked": "^18.1.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/dompurify": "^3.0.5",
+    "concurrently": "^10.0.6",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "ws": "^8.22.0"
+  },
+  "description": "Desktop app for Claude Code with your own agent framework, live task board and process monitor"
+}

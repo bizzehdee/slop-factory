@@ -1,0 +1,72 @@
+// Talks to the sidecar. Inside Tauri it goes through the Rust shell (invoke + events);
+// in a plain browser (npm run dev:browser) it goes through scripts/dev-bridge.mjs over a WebSocket.
+import type { SidecarEvent, UiCommand } from '../sidecar/src/protocol';
+
+type Listener = (e: SidecarEvent) => void;
+
+export interface Bridge {
+  send(cmd: UiCommand): void;
+  onEvent(fn: Listener): void;
+  pickFolder(): Promise<string | null>;
+  readonly mode: 'tauri' | 'browser';
+}
+
+const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+async function tauriBridge(): Promise<Bridge> {
+  const { invoke } = await import('@tauri-apps/api/core');
+  const { listen } = await import('@tauri-apps/api/event');
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const listeners: Listener[] = [];
+  await listen<string>('sidecar://event', ({ payload }) => {
+    try {
+      const e = JSON.parse(payload) as SidecarEvent;
+      listeners.forEach((fn) => fn(e));
+    } catch {
+      /* ignore non-JSON lines */
+    }
+  });
+  await invoke('sidecar_start');
+  return {
+    mode: 'tauri',
+    send: (cmd) => void invoke('sidecar_send', { line: JSON.stringify(cmd) }),
+    onEvent: (fn) => listeners.push(fn),
+    pickFolder: async () => {
+      const picked = await open({ directory: true, multiple: false, title: 'Open project' });
+      return typeof picked === 'string' ? picked : null;
+    },
+  };
+}
+
+function browserBridge(): Bridge {
+  const listeners: Listener[] = [];
+  const queue: string[] = [];
+  let ws: WebSocket | undefined;
+
+  const connect = () => {
+    ws = new WebSocket(`ws://${location.hostname}:1421`);
+    ws.onopen = () => queue.splice(0).forEach((l) => ws!.send(l));
+    ws.onmessage = (m) => {
+      const e = JSON.parse(String(m.data)) as SidecarEvent;
+      listeners.forEach((fn) => fn(e));
+    };
+    ws.onclose = () => {
+      console.error('Lost the dev bridge. Is `node scripts/dev-bridge.mjs` running?');
+      setTimeout(connect, 2000);
+    };
+  };
+  connect();
+
+  return {
+    mode: 'browser',
+    send: (cmd) => {
+      const line = JSON.stringify(cmd);
+      if (ws?.readyState === WebSocket.OPEN) ws.send(line);
+      else queue.push(line);
+    },
+    onEvent: (fn) => listeners.push(fn),
+    pickFolder: async () => window.prompt('Project folder (absolute path)')?.trim() || null,
+  };
+}
+
+export const createBridge = (): Promise<Bridge> => (isTauri ? tauriBridge() : Promise.resolve(browserBridge()));

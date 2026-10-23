@@ -1,0 +1,17 @@
+[package]
+name = "claude-desk"
+version = "0.1.0"
+description = "A desktop cockpit for Claude Code with your own agent framework"
+edition = "2021"
+
+[lib]
+name = "claude_desk_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde_json = "1"
