@@ -75,6 +75,8 @@ export type UiCommand =
   | { type: 'resetUsage'; project: string }
   | { type: 'gitRefresh'; project: string }
   | { type: 'openProjects' } // what was open when the app last closed
+  | { type: 'getPrefs' }
+  | { type: 'setPref'; key: string; value: string | null } // null: back to the default
   | { type: 'setActiveProject'; project: string }
   | { type: 'gitChanges'; project: string; requestId: string } // what isn't committed, for review
   | { type: 'gitFetch'; project: string }
@@ -420,6 +422,7 @@ export type GlobalEvent =
   | { type: 'projectCreated'; requestId: string; ok: boolean; dir?: string; error?: string }
   | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string }
   | { type: 'gitSettings'; fetchMinutes: number }
-  | { type: 'openProjects'; list?: string[]; active?: string }; // what to reopen; no list: never kept yet
+  | { type: 'openProjects'; list?: string[]; active?: string } // what to reopen; no list: never kept yet
+  | { type: 'prefs'; prefs: Record<string, string> };
 
 export type SidecarEvent = GlobalEvent | (ProjectEvent & { project: string });

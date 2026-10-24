@@ -25,6 +25,7 @@ interface DeskState {
   gitFetchMinutes?: number; // how often open projects fetch; 0 never (default 5)
   openProjects?: string[]; // what was open when the app last closed, reopened at start; absent before this was kept here
   activeProject?: string; // the one that was showing
+  prefs?: Record<string, string>; // the window's settings: theme, notifications, where new projects go
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -50,6 +51,7 @@ export class ProviderStore {
         gitFetchMinutes: typeof raw.gitFetchMinutes === 'number' && raw.gitFetchMinutes >= 0 ? raw.gitFetchMinutes : undefined,
         openProjects: Array.isArray(raw.openProjects) ? raw.openProjects.filter((d: unknown) => typeof d === 'string') : undefined,
         activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
+        prefs: raw.prefs && typeof raw.prefs === 'object' ? Object.fromEntries(Object.entries(raw.prefs).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
       };
     } catch {
       /* first run */
@@ -110,6 +112,19 @@ export class ProviderStore {
   async setActiveProject(dir: string): Promise<void> {
     if (this.state.activeProject === dir) return;
     this.state.activeProject = dir;
+    await this.save();
+  }
+
+  /** The window's settings, kept here so they outlast the window's own storage. */
+  get prefs(): Record<string, string> {
+    return { ...(this.state.prefs ?? {}) };
+  }
+
+  async setPref(key: string, value: string | null): Promise<void> {
+    const prefs = { ...(this.state.prefs ?? {}) };
+    if (value == null) delete prefs[key];
+    else prefs[key] = value;
+    this.state.prefs = prefs;
     await this.save();
   }
 

@@ -75,7 +75,13 @@ export const setBridge = (b: Bridge) => (bridge = b);
 export const setProviderList = (list: ProviderConfig[]) => (providerList = list);
 export const setEditorList = (list: EditorInfo[]) => (editorList = list);
 
-export function store(key: string, value: string | null): void {
+// Settings the sidecar keeps in ~/.slop-factory/config.json, as a desktop webview needn't keep its
+// own storage. The window keeps a copy too, only so the theme is right before the sidecar answers.
+const SHARED = new Set(['slop-factory:theme', 'slop-factory:notifications', 'slop-factory:new-project-parent']);
+const prefKey = (key: string) => key.replace(/^slop-factory:/, '');
+let prefs: Record<string, string> | undefined; // the sidecar's settings, once it has said
+
+function localStore(key: string, value: string | null): void {
   try {
     if (value == null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
@@ -83,12 +89,39 @@ export function store(key: string, value: string | null): void {
     /* storage unavailable */
   }
 }
-export function load(key: string): string | null {
+function localLoad(key: string): string | null {
   try {
     // Earlier builds, called Claude Desk, kept these under claude-desk:.
     return localStorage.getItem(key) ?? localStorage.getItem(key.replace(/^slop-factory:/, 'claude-desk:'));
   } catch {
     return null;
+  }
+}
+
+export function store(key: string, value: string | null): void {
+  localStore(key, value);
+  if (!SHARED.has(key)) return;
+  if (prefs) {
+    if (value == null) delete prefs[prefKey(key)];
+    else prefs[prefKey(key)] = value;
+  }
+  send({ type: 'setPref', key: prefKey(key), value });
+}
+export function load(key: string): string | null {
+  if (prefs && SHARED.has(key)) return prefs[prefKey(key)] ?? null;
+  return localLoad(key);
+}
+
+/** The sidecar's settings arrived. Any it doesn't have yet, an earlier version kept here: hand them over. */
+export function receivePrefs(from: Record<string, string>): void {
+  prefs = { ...from };
+  for (const key of SHARED) {
+    const local = localLoad(key);
+    if (prefs[prefKey(key)] === undefined && local != null) {
+      prefs[prefKey(key)] = local;
+      send({ type: 'setPref', key: prefKey(key), value: local });
+    }
+    localStore(key, prefs[prefKey(key)] ?? null);
   }
 }
 export const saveOpenProjects = () => store('slop-factory:projects', JSON.stringify([...projects.keys()]));

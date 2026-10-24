@@ -1077,3 +1077,26 @@ test('the open projects are kept across restarts; closing one drops it; saves ne
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("the window's settings are kept in config.json, and null puts one back to its default", async () => {
+  const { ProviderStore } = await import('../dist/providers.js');
+  const dir = await mkdtemp(path.join(tmpdir(), 'prefs-'));
+  const saved = process.env.SLOP_FACTORY_CONFIG_DIR;
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
+  try {
+    let store = new ProviderStore();
+    await store.load();
+    assert.deepEqual(store.prefs, {});
+    await store.setPref('theme', 'dark');
+    await store.setPref('notifications', 'off');
+    store = new ProviderStore();
+    await store.load();
+    assert.deepEqual(store.prefs, { theme: 'dark', notifications: 'off' });
+    await store.setPref('theme', null);
+    assert.deepEqual(store.prefs, { notifications: 'off' });
+  } finally {
+    if (saved === undefined) delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    else process.env.SLOP_FACTORY_CONFIG_DIR = saved;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

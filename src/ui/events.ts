@@ -8,8 +8,8 @@ import { onCreateEvent } from './newproject';
 import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
 import { nextQueued, startFreed, waitingQueued, startQueued, trackLane } from './queue';
-import { onMcpServers } from './settings';
-import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
+import { applyTheme, onMcpServers, renderSettings, type Theme } from './settings';
+import { active, editorList, load, newProject, projects, providerList, receivePrefs, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
@@ -44,6 +44,11 @@ export function onEvent(e: SidecarEvent): void {
       return onCreateEvent(e);
     case 'editors':
       setEditorList(e.list);
+      return;
+    case 'prefs':
+      receivePrefs(e.prefs);
+      applyTheme((load('slop-factory:theme') as Theme | null) ?? 'system');
+      if ($<HTMLDialogElement>('settings-dialog').open) renderSettings();
       return;
     case 'openProjects':
       return reopenProjects(e.list, e.active);

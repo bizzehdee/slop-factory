@@ -304,6 +304,11 @@ async function handle(cmd: UiCommand): Promise<void> {
       const { list, active } = providers.openProjects;
       return emit({ type: 'openProjects', list, active });
     }
+    case 'getPrefs':
+      return emit({ type: 'prefs', prefs: providers.prefs });
+    case 'setPref':
+      if (!/^[a-z][a-z0-9-]{0,40}$/.test(cmd.key)) throw new Error(`Not a setting: ${cmd.key}`);
+      return providers.setPref(cmd.key, typeof cmd.value === 'string' ? cmd.value.slice(0, 4096) : null);
     case 'setActiveProject':
       return providers.setActiveProject(path.resolve(cmd.project));
     case 'openFolder':

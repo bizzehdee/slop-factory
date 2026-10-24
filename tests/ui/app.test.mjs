@@ -706,3 +706,42 @@ test("a queued task that's only just been read isn't started as if it had been f
   assert.equal(await page.locator('.msg.user.action').count(), 0, 'nothing started');
   assert.equal(await page.locator('.priority:has-text("T5")').count(), 1, 'still queued');
 });
+
+test('the theme, notifications and where new projects go are remembered by the app, not just the window', async () => {
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(path.join(app.work, 'nested'), { recursive: true });
+  let page = await app.open(await app.project());
+  await page.click('#open-settings');
+  await page.check('#theme-picker input[value=dark]');
+  await page.uncheck('#notify-toggle');
+  await page.click('#settings-close');
+  await page.click('#add-project');
+  await page.click('#menu .menu-item:has-text("New project")');
+  await page.fill('#new-project-form input[name=name]', 'Elsewhere');
+  await page.fill('#np-parent', path.join(app.work, 'nested'));
+  await page.check('#new-project-form input[value=none]');
+  await page.click('#np-create');
+  await page.waitForSelector('#project-name:has-text("elsewhere")');
+  await page.close();
+
+  // Quit and reopen into a window that remembers nothing itself.
+  await app.restartSidecar();
+  page = await app.open(await app.project());
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
+  await page.click('#open-settings');
+  assert.equal(await page.isChecked('#theme-picker input[value=dark]'), true);
+  assert.equal(await page.isChecked('#notify-toggle'), false);
+  await page.click('#settings-close');
+  await page.click('#add-project');
+  await page.click('#menu .menu-item:has-text("New project")');
+  assert.equal(await page.inputValue('#np-parent'), path.join(app.work, 'nested'));
+  await page.click('#np-cancel');
+
+  // Back to the defaults for any test that follows.
+  await page.click('#open-settings');
+  await page.check('#theme-picker input[value=system]');
+  await page.check('#notify-toggle');
+  await page.click('#settings-close');
+  await page.waitForTimeout(300);
+  assert.deepEqual(page.errors, []);
+});

@@ -48,6 +48,7 @@ export async function init(): Promise<void> {
   renderAll();
   const b = setBridge(await createBridge());
   b.onEvent(onEvent);
+  send({ type: 'getPrefs' });
   send({ type: 'listEditors' });
   send({ type: 'checkAuth' });
 
