@@ -3021,3 +3021,40 @@ textarea {
   color: var(--faint);
   font-size: 0.75rem;
 }
+
+.changed-files {
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.changed {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+}
+.changed-mark {
+  flex: none;
+  width: 1.4em;
+  text-align: center;
+  border-radius: 3px;
+  background: var(--raised);
+  color: var(--muted);
+  font-weight: 700;
+}
+.changed.added .changed-mark,
+.changed.untracked .changed-mark {
+  color: var(--done);
+}
+.changed.deleted .changed-mark,
+.changed.conflict .changed-mark {
+  color: var(--bug);
+}
+.changed-path {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.changed.more {
+  color: var(--muted);
+}

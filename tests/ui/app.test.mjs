@@ -557,11 +557,23 @@ test('git: initialise, publish, fetch and pull, push, and commit through the age
   await page.waitForSelector('.notice:has-text("Pushed 1 commit to origin/main.")');
   assert.match(g(remote, 'log', '--oneline', 'main'), /Mine/);
 
-  // Uncommitted work: the agent is asked to commit it.
+  // Uncommitted work: the chip shows what it is; only the panel's button asks for a commit.
   await writeFile(path.join(dir, 'scratch.txt'), 'wip');
+  await writeFile(path.join(dir, 'theirs.txt'), 'changed here');
   await fetchNow();
-  await page.click('.git-chip.changes:has-text("1 uncommitted")');
+  await page.click('.git-chip.changes:has-text("2 uncommitted")');
+  await page.waitForSelector('.changed.untracked:has-text("scratch.txt")');
+  assert.match(await page.textContent('.changed.modified'), /M\s*theirs\.txt/);
+  await page.waitForSelector('.diff-lines .del:has-text("from elsewhere")');
+  await page.waitForSelector('.diff-lines .add:has-text("changed here")');
+  await page.waitForSelector('.diff-lines .add:has-text("wip")');
+  await page.click('#docs-actions button:has-text("Close")');
+  await page.waitForSelector('#docs-panel', { state: 'hidden' });
+  assert.equal(await page.locator('.msg.user.action:has-text("Commit changes")').count(), 0, 'looking commits nothing');
+  await page.click('.git-chip.changes');
+  await page.click('#docs-actions button:has-text("Ask the agent to commit")');
   await page.waitForSelector('.msg.user.action:has-text("Commit changes")');
+  await page.waitForSelector('#docs-panel', { state: 'hidden' });
 
   // Pulling by itself is a per-project switch.
   await page.click('#git-branch');

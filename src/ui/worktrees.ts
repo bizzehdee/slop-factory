@@ -82,7 +82,7 @@ export function reviewWorktree(p: Proj, w: WorktreeInfo): void {
 }
 
 /** A unified diff as a list of files, each with its lines coloured. */
-function diffView(diff: string): HTMLElement {
+export function diffView(diff: string): HTMLElement {
   const files: { name: string; lines: string[] }[] = [];
   let cur: { name: string; lines: string[] } | undefined;
   for (const line of diff.split('\n')) {

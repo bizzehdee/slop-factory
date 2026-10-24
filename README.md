@@ -154,8 +154,10 @@ says so, and a folder that isn't a repository offers **Initialise git**.
   it stops and says so, and you can ask the agent to merge. Pulling while the agent is working asks
   first.
 - **Push** with the ↑ button, or **Publish** a branch that isn't on the remote yet. It never forces.
-- **Commit** with the "uncommitted" button: the agent reads the changes and commits them in sensible
-  pieces with clear messages, leaving out anything that shouldn't be committed. It doesn't push.
+- **Uncommitted changes**: the "uncommitted" button lists each changed file (changed, new, deleted,
+  renamed, in conflict) with its diff. **Ask the agent to commit** there has the agent read the
+  changes and commit them in sensible pieces with clear messages, leaving out anything that
+  shouldn't be committed. It doesn't push.
 - **Pull automatically**, in the branch menu, is off until you turn it on for a project. It then
   pulls after each fetch, but only when it's a fast-forward, the agent is idle and nothing is
   uncommitted.

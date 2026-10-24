@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import type { GitInfo } from './protocol.js';
+import type { ChangedFile, GitInfo } from './protocol.js';
 
 // The project's git repository, through the git command-line tool: where its branch stands
 // against its upstream, fetching on a timer, and pulling (fast-forward only) and pushing on
@@ -41,6 +41,61 @@ export function gitMessage(out: string): string {
   const lines = out.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !/^hint:/i.test(l));
   const important = lines.filter((l) => /^(fatal|error|remote: error)\b/i.test(l) || /rejected/.test(l));
   return (important.length ? important : lines.slice(-3)).map((l) => l.replace(/^(fatal|error):\s*/i, '')).join(' ').slice(0, 500) || 'git failed.';
+}
+
+const MAX_DIFF = 400_000;
+const MAX_FILES = 500;
+const MAX_NEW_FILE_DIFFS = 50;
+
+/** One line of git status --porcelain=v1: what kind of change it is. */
+function changeKind(xy: string): ChangedFile['status'] {
+  if (xy === '??') return 'untracked';
+  if (xy.includes('U') || xy === 'AA' || xy === 'DD') return 'conflict';
+  if (xy.includes('R')) return 'renamed';
+  if (xy.includes('D')) return 'deleted';
+  if (xy[0] === 'A') return 'added';
+  return 'modified';
+}
+
+/** git status --porcelain=v1 -z, as files. A rename's entry is followed by the name it had. */
+export function parseChanges(z: string): ChangedFile[] {
+  const parts = z.split('\0');
+  const out: ChangedFile[] = [];
+  for (let i = 0; i < parts.length; i++) {
+    const e = parts[i];
+    if (e.length < 4) continue;
+    const xy = e.slice(0, 2);
+    const file: ChangedFile = { path: e.slice(3), status: changeKind(xy) };
+    if (xy.includes('R') || xy.includes('C')) file.from = parts[++i];
+    out.push(file);
+  }
+  return out;
+}
+
+/** What isn't committed: each file and how it changed, and one diff of it all. Reads only. */
+export async function uncommittedChanges(root: string): Promise<{ files: ChangedFile[]; diff: string; more: number }> {
+  const z = await git(root, ['--no-optional-locks', 'status', '--porcelain=v1', '-z']);
+  const all = parseChanges(z);
+  const files = all.slice(0, MAX_FILES);
+  const hasHead = await git(root, ['rev-parse', '--verify', '-q', 'HEAD']).then(() => true, () => false);
+  // Against the last commit, so staged and unstaged changes show together; before any commit, both halves.
+  let diff = hasHead
+    ? await git(root, ['--no-optional-locks', 'diff', 'HEAD', '--no-color', '-M'])
+    : (await git(root, ['--no-optional-locks', 'diff', '--cached', '--no-color'])) + (await git(root, ['--no-optional-locks', 'diff', '--no-color']));
+  // New files have no diff in git's eyes: show their contents as added lines.
+  for (const f of files.filter((x) => x.status === 'untracked' && !x.path.endsWith('/')).slice(0, MAX_NEW_FILE_DIFFS)) {
+    if (diff.length > MAX_DIFF) break;
+    diff += await noIndexDiff(root, f.path);
+  }
+  if (diff.length > MAX_DIFF) diff = diff.slice(0, MAX_DIFF) + '\n# … the rest is cut short';
+  return { files, diff, more: all.length - files.length };
+}
+
+/** git diff --no-index against nothing: a new file as all-added lines. git exits 1 when they differ. */
+function noIndexDiff(root: string, file: string): Promise<string> {
+  return new Promise((resolve) => {
+    execFile('git', ['diff', '--no-color', '--no-index', '--', '/dev/null', file], { cwd: root, timeout: QUICK, maxBuffer: 4 * 1024 * 1024, windowsHide: true }, (_err, stdout) => resolve(String(stdout ?? '')));
+  });
 }
 
 let installed: Promise<boolean> | undefined;

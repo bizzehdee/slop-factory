@@ -74,6 +74,7 @@ export type UiCommand =
   | { type: 'send'; project: string; text: string; attachments?: Attachment[] }
   | { type: 'resetUsage'; project: string }
   | { type: 'gitRefresh'; project: string }
+  | { type: 'gitChanges'; project: string; requestId: string } // what isn't committed, for review
   | { type: 'gitFetch'; project: string }
   | { type: 'gitPull'; project: string }
   | { type: 'gitPush'; project: string }
@@ -269,6 +270,13 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** A file with uncommitted changes. */
+export interface ChangedFile {
+  path: string; // a folder of new files ends with /
+  status: 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflict';
+  from?: string; // a rename's old name
+}
+
 /** Where the project's git repository stands. */
 export interface GitInfo {
   available: boolean; // the git command-line tool is installed
@@ -368,6 +376,7 @@ export type ProjectEvent =
   | { type: 'session'; info: SessionInfo }
   | { type: 'usage'; usage: ProjectUsage }
   | { type: 'git'; info: GitInfo }
+  | { type: 'gitChanges'; requestId: string; files: ChangedFile[]; diff: string; more: number; error?: string }
   | { type: 'planLimit'; limit: PlanLimit }
   | { type: 'gauges'; gauges: Gauges }
   | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers

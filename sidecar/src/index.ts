@@ -19,7 +19,7 @@ import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { addBug, addQuestion, addTask } from './capture.js';
 import { UsageLedger } from './usage.js';
-import { GitMonitor } from './git.js';
+import { GitMonitor, uncommittedChanges } from './git.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
@@ -362,6 +362,16 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'gitSettings':
       if (typeof cmd.fetchMinutes === 'number') await providers.setFetchMinutes(cmd.fetchMinutes);
       return emit({ type: 'gitSettings', fetchMinutes: providers.fetchMinutes });
+    case 'gitChanges': {
+      const p = need(cmd.project);
+      try {
+        const { files, diff, more } = await uncommittedChanges(p.dir);
+        p.out({ type: 'gitChanges', requestId: cmd.requestId, files, diff, more });
+      } catch (err) {
+        p.out({ type: 'gitChanges', requestId: cmd.requestId, files: [], diff: '', more: 0, error: err instanceof Error ? err.message : String(err) });
+      }
+      return;
+    }
     case 'gitRefresh':
       return need(cmd.project).git.refresh();
     case 'gitFetch':

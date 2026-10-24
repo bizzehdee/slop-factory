@@ -1017,3 +1017,37 @@ test("a local server's context window comes from llama.cpp's /props or Ollama, a
   assert.equal(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, '32768');
   assert.equal(sessionSettings({ id: 'l', name: 'l', kind: 'llamacpp', baseUrl: base, model: 'm' }).env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, undefined);
 });
+
+test('uncommitted changes: each file with how it changed, and one diff including new files', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { parseChanges, uncommittedChanges } = await import('../dist/git.js');
+  assert.deepEqual(parseChanges(' M a.txt\0?? new.txt\0R  b2.txt\0b.txt\0D  gone.txt\0UU both.txt\0A  added.txt\0'), [
+    { path: 'a.txt', status: 'modified' },
+    { path: 'new.txt', status: 'untracked' },
+    { path: 'b2.txt', status: 'renamed', from: 'b.txt' },
+    { path: 'gone.txt', status: 'deleted' },
+    { path: 'both.txt', status: 'conflict' },
+    { path: 'added.txt', status: 'added' },
+  ]);
+  const root = await mkdtemp(path.join(tmpdir(), 'changes-'));
+  const g = (...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: root, encoding: 'utf8' });
+  try {
+    g('init', '-q', '-b', 'main');
+    // Before any commit: staged files still show.
+    await writeFile(path.join(root, 'a.txt'), 'one\n');
+    g('add', '.');
+    let c = await uncommittedChanges(root);
+    assert.deepEqual(c.files, [{ path: 'a.txt', status: 'added' }]);
+    assert.match(c.diff, /\+one/);
+    g('commit', '-qm', 'start');
+    await writeFile(path.join(root, 'a.txt'), 'two\n');
+    await writeFile(path.join(root, 'new.txt'), 'fresh\n');
+    c = await uncommittedChanges(root);
+    assert.deepEqual(c.files, [{ path: 'a.txt', status: 'modified' }, { path: 'new.txt', status: 'untracked' }]);
+    assert.match(c.diff, /-one\n\+two/);
+    assert.match(c.diff, /diff --git a\/new\.txt b\/new\.txt[\s\S]*\+fresh/);
+    assert.equal(c.more, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

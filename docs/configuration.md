@@ -200,7 +200,7 @@ their built-in text, so you can change one without copying the rest.
 | **Summarise work done** | a finished task, bug or phase | `summarise` | |
 | **Run workstreams** | the streams you pick | `runWorkstreams` | |
 | **Find workstreams** | the board | `findWorkstreams` | |
-| **Commit** | the uncommitted changes, from the git line under the project's name | `commitChanges` | |
+| **Ask the agent to commit** | the uncommitted changes, from the git line under the project's name | `commitChanges` | |
 
 Items in **Up next** use the same prompts when their turn comes: **Start now** for the main
 queue, **Start in subagent** for items queued to run in a subagent.

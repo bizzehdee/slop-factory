@@ -2,7 +2,10 @@ import { $, h, svgIcon } from './dom';
 
 const ICON_BRANCH =
   '<g fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="5" cy="3.5" r="1.6"/><circle cx="5" cy="12.5" r="1.6"/><circle cx="11" cy="5.5" r="1.6"/><path d="M5 5.1v5.8M11 7.1c0 2.5-6 1.8-6 3.8"/></g>';
+import type { ChangedFile } from '../../sidecar/src/protocol';
+import { closeDocs, docsView, setDocsView } from './docs';
 import { MenuItem, closeMenu, menuAnchor, openMenu } from './menus';
+import { diffView } from './worktrees';
 import { Proj, active, send } from './state';
 
 // ---------- git: where the project's branch stands, and fetch, pull, push and commit ----------
@@ -25,6 +28,85 @@ export function pull(p: Proj): void {
 const push = (p: Proj) => send({ type: 'gitPush', project: p.dir });
 const commit = (p: Proj) => send({ type: 'gitCommit', project: p.dir });
 
+// ---------- what isn't committed: a panel to look before asking for a commit ----------
+
+export interface UncommittedView {
+  files?: ChangedFile[];
+  diff?: string;
+  more?: number;
+  error?: string;
+}
+
+const STATUS: Record<ChangedFile['status'], [string, string]> = {
+  modified: ['M', 'Changed'],
+  added: ['A', 'Added'],
+  deleted: ['D', 'Deleted'],
+  renamed: ['R', 'Renamed'],
+  untracked: ['N', 'New, not yet tracked'],
+  conflict: ['U', 'Conflict'],
+};
+
+export function openChanges(p: Proj): void {
+  const requestId = Math.random().toString(36).slice(2);
+  setDocsView({ project: p.dir, key: 'uncommitted', requestId, tab: '', docs: [], uncommitted: {} });
+  send({ type: 'gitChanges', project: p.dir, requestId });
+  renderUncommitted(p);
+  $('docs-panel').hidden = false;
+  $('docs-close').focus();
+}
+
+export function onGitChanges(p: Proj, e: { requestId: string; files: ChangedFile[]; diff: string; more: number; error?: string }): void {
+  if (docsView?.project !== p.dir || docsView.requestId !== e.requestId || !docsView.uncommitted) return;
+  docsView.uncommitted = { files: e.files, diff: e.diff, more: e.more, error: e.error };
+  renderUncommitted(p);
+}
+
+export function renderUncommitted(p: Proj | undefined): void {
+  const view = docsView?.uncommitted;
+  if (!p || !view) return;
+  const files = view.files;
+  $('docs-tabs').hidden = true;
+  $('docs-ref').textContent = 'Uncommitted changes';
+  $('docs-title').textContent = files ? `${files.length + (view.more ?? 0)} file${files.length + (view.more ?? 0) === 1 ? '' : 's'}${p.git?.branch ? ` on ${p.git.branch}` : ''}` : 'Looking…';
+  const body = $('docs-body');
+  if (view.error) body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, `Couldn’t read the changes: ${view.error}`)));
+  else if (!files) body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, 'Reading the changes…')));
+  else if (!files.length) body.replaceChildren(h('div', { class: 'docs-empty' }, h('p', {}, 'Nothing uncommitted: everything is in a commit.')));
+  else {
+    body.replaceChildren(
+      h(
+        'ul',
+        { class: 'changed-files' },
+        ...files.map((f) => {
+          const [mark, word] = STATUS[f.status];
+          return h('li', { class: `changed ${f.status}` }, h('span', { class: 'changed-mark', title: word, 'aria-label': word }, mark), h('span', { class: 'changed-path' }, f.from ? `${f.from} → ${f.path}` : f.path));
+        }),
+        view.more ? h('li', { class: 'changed more' }, `and ${plural(view.more, 'more file')}`) : null,
+      ),
+      view.diff ? diffView(view.diff) : '',
+    );
+  }
+  const actions = $('docs-actions');
+  actions.hidden = false;
+  actions.replaceChildren(
+    h(
+      'button',
+      {
+        class: 'button primary',
+        type: 'button',
+        disabled: !files?.length,
+        title: 'The agent reads the changes and commits them in sensible pieces with clear messages; it doesn’t push',
+        onclick: () => {
+          commit(p);
+          closeDocs();
+        },
+      },
+      'Ask the agent to commit',
+    ),
+    h('button', { class: 'button quiet', type: 'button', onclick: closeDocs }, 'Close'),
+  );
+}
+
 export function gitMenu(p: Proj): MenuItem[] {
   const g = p.git;
   if (!g?.repo) return [];
@@ -34,7 +116,7 @@ export function gitMenu(p: Proj): MenuItem[] {
     g.upstream
       ? { label: g.ahead ? `Push ${plural(g.ahead, 'commit')}` : 'Push', disabled: !g.ahead || !!g.running, run: () => push(p) }
       : { label: g.remotes.length ? `Publish ${g.branch ?? 'branch'}` : 'Publish (no remote)', disabled: !g.remotes.length || !g.branch || !!g.running, run: () => push(p) },
-    { label: g.changed + g.untracked ? `Commit ${plural(g.changed + g.untracked, 'change')}…` : 'Commit…', disabled: !(g.changed + g.untracked), run: () => commit(p) },
+    { label: g.changed + g.untracked ? `Uncommitted changes (${g.changed + g.untracked})…` : 'Uncommitted changes', disabled: !(g.changed + g.untracked), run: () => openChanges(p) },
     { label: 'Pull automatically', checked: g.autoPull, run: () => send({ type: 'setAutoPull', project: p.dir, on: !g.autoPull }) },
   ];
   const facts = [
@@ -85,7 +167,7 @@ export function renderGit(): void {
     g.behind ? chip(`↓${g.behind}`, `Pull ${plural(g.behind, 'commit')} from ${g.upstream}${g.ahead ? ` (it has diverged: ${g.ahead} to push too)` : ''}`, () => pull(p), 'pull') : null,
     g.ahead && g.upstream ? chip(`↑${g.ahead}`, `Push ${plural(g.ahead, 'commit')} to ${g.upstream}`, () => push(p), 'push') : null,
     !g.upstream && g.branch && g.remotes.length ? chip('Publish', `Push ${g.branch} and track it on ${g.remotes.includes('origin') ? 'origin' : g.remotes[0]}`, () => push(p), 'push') : null,
-    uncommitted ? chip(`${uncommitted} uncommitted`, 'Ask the agent to commit these changes', () => commit(p), 'changes') : null,
+    uncommitted ? chip(`${uncommitted} uncommitted`, 'See what isn’t committed', () => openChanges(p), 'changes') : null,
     g.conflicts ? h('span', { class: 'git-conflicts warn-text' }, plural(g.conflicts, 'conflict')) : null,
     g.fetchError ? h('span', { class: 'git-warn warn-text', title: `Last fetch failed: ${g.fetchError}` }, '!') : null,
   ];

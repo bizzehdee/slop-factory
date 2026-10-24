@@ -17,7 +17,7 @@ import { notify } from './notify';
 import { clearQueuedTurns, endTurn, noteToolUse, onRewound, startTurn } from './changes';
 import { noteGauges, renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
-import { renderGit, setFetchMinutes } from './git';
+import { onGitChanges, renderGit, setFetchMinutes } from './git';
 
 // ---------- events ----------
 
@@ -117,6 +117,8 @@ export function onEvent(e: SidecarEvent): void {
     case 'commands':
       p.commands = e.commands;
       return;
+    case 'gitChanges':
+      return onGitChanges(p, e);
     case 'git':
       p.git = e.info;
       if (isActive) renderGit();
