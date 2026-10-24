@@ -284,10 +284,13 @@ export const DEFAULT_TASK_CONFIG: TaskConfig = {
 export async function loadTaskConfig(root: string): Promise<TaskConfig> {
   try {
     const raw = await readProjectSettings(root);
+    // Lists of patterns; anything in them that isn't text is skipped.
+    const globs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()) : undefined);
+    const taskGlobs = globs(raw.taskGlobs);
     return {
-      taskGlobs: Array.isArray(raw.taskGlobs) && raw.taskGlobs.length ? raw.taskGlobs : DEFAULT_TASK_CONFIG.taskGlobs,
-      docGlobs: Array.isArray(raw.docGlobs) ? raw.docGlobs : DEFAULT_TASK_CONFIG.docGlobs,
-      ignore: Array.isArray(raw.ignore) ? raw.ignore : DEFAULT_TASK_CONFIG.ignore,
+      taskGlobs: taskGlobs?.length ? taskGlobs : DEFAULT_TASK_CONFIG.taskGlobs,
+      docGlobs: globs(raw.docGlobs) ?? DEFAULT_TASK_CONFIG.docGlobs,
+      ignore: globs(raw.ignore) ?? DEFAULT_TASK_CONFIG.ignore,
     };
   } catch {
     return DEFAULT_TASK_CONFIG;

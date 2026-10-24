@@ -35,14 +35,26 @@ export async function migrateConfigDir(): Promise<void> {
   await fs.rename(legacy, dir).catch(() => fs.cp(legacy, dir, { recursive: true }));
 }
 
-/** A project's .slop-factory.json (or its older .claude-desk.json), or {}. */
-export async function readProjectSettings(root: string): Promise<Record<string, unknown>> {
+/** A project's .slop-factory.json (or its older .claude-desk.json), or {} with why it couldn't be used. */
+export async function loadProjectSettings(root: string): Promise<{ settings: Record<string, unknown>; problem?: string }> {
   for (const name of PROJECT_FILES) {
+    let text: string;
     try {
-      return JSON.parse(await fs.readFile(path.join(root, name), 'utf8'));
+      text = await fs.readFile(path.join(root, name), 'utf8');
     } catch {
-      /* not there, or not JSON: try the next */
+      continue; // not there: try the older name
+    }
+    try {
+      const json = JSON.parse(text);
+      if (json && typeof json === 'object' && !Array.isArray(json)) return { settings: json };
+      return { settings: {}, problem: `${name} should hold a JSON object ({ ... }), so it's being ignored.` };
+    } catch (err) {
+      return { settings: {}, problem: `${name} isn't valid JSON, so it's being ignored: ${err instanceof Error ? err.message : String(err)}` };
     }
   }
-  return {};
+  return { settings: {} };
+}
+
+export async function readProjectSettings(root: string): Promise<Record<string, unknown>> {
+  return (await loadProjectSettings(root)).settings;
 }

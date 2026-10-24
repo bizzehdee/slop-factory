@@ -156,24 +156,20 @@ LiteLLM in front of it. Nothing from a project on a local model is sent to Anthr
 
 ## Customising a project
 
-A `.slop-factory.json` in a project can change which files the board reads and what the menus ask
-the agent to do:
+A `.slop-factory.json` in a project can change which files the board reads and what each board
+action asks the agent to do:
 
 ```json
 {
-  "taskGlobs": ["task.md", "tasks/*.md"],
-  "docGlobs": ["specs/*.md", "summaries/*.md"],
+  "taskGlobs": ["task.md", "tasks/*.md", "packages/*/tasks/*.md"],
   "prompts": {
-    "startTask": "Start work on {ref} ({title}) from {file}.\n\n{where} ...",
-    "whereSubagent": "Run it in a background subagent with worktree isolation..."
+    "whereSubagent": "Run it in a background subagent with worktree isolation. Have it push its branch and open a draft pull request for {ref}."
   }
 }
 ```
 
-The prompts you can replace are `startTask`, `startBug`, `startLegacyTask`, `startPhase`,
-`startLegacySection`, `reinvestigate` and `summarise`, plus `whereNow` and `whereSubagent` for
-where started work runs. They can use `{ref}`, `{title}`, `{file}`, `{specPath}`, `{summaryPath}`,
-`{docs}` and `{where}`.
+[Project settings](docs/configuration.md) covers every setting, every prompt with its built-in
+text and placeholders, and recipes to start from.
 
 The **Up next** queue is kept in `.slop-factory/priorities.json` in the project. Commit it to share
 the queue, or add it to `.gitignore`.

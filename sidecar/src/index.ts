@@ -19,7 +19,7 @@ import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { addBug, addQuestion, addTask } from './capture.js';
 import { UsageLedger } from './usage.js';
-import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
+import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
 import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
@@ -93,7 +93,9 @@ const queueEvent = (q: Priorities, laneRun?: LaneRun | null): ProjectEvent => ({
 
 async function loadPrompts(dir: string): Promise<DeskPrompts> {
   const raw = await readProjectSettings(dir);
-  return raw.prompts && typeof raw.prompts === 'object' ? (raw.prompts as DeskPrompts) : {};
+  if (!raw.prompts || typeof raw.prompts !== 'object') return {};
+  // Only text replaces a prompt; anything else (a typo, a number) leaves the built-in one.
+  return Object.fromEntries(Object.entries(raw.prompts).filter(([, v]) => typeof v === 'string' && v.trim())) as DeskPrompts;
 }
 
 /** Send a reopened window everything it needs to rebuild this project's view. */
@@ -138,6 +140,8 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const provider = providers.forProject(dir);
   const projectEvent: ProjectEvent = { type: 'project', dir, name: path.basename(dir), framework, taskGlobs: config.taskGlobs, permissionMode: mode, providerId: provider.id };
   out(projectEvent);
+  const { problem } = await loadProjectSettings(dir);
+  if (problem) out({ type: 'notice', level: 'warn', text: `${problem} Fix it and reopen the project.` });
 
   const priorities = new Priorities(dir);
   await priorities.load();

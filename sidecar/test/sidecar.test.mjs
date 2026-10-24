@@ -755,6 +755,43 @@ test('workstreams come from "## W<n>: name" sections, and start together in one 
   assert.match(DEFAULT_PROMPTS.findWorkstreams, /tasks\/workstream\.md/);
 });
 
+test('placeholders inside whereSubagent are filled in, and bad settings are reported, not used', async () => {
+  const { promptFor } = await import('../dist/actions.js');
+  const { loadProjectSettings } = await import('../dist/names.js');
+  const { loadTaskConfig, DEFAULT_TASK_CONFIG } = await import('../dist/tasks.js');
+  const item = { key: 'T5', kind: 'task', id: 'T5', title: 'Report', rel: 'tasks/task_phase_2.md', done: false };
+  assert.equal(promptFor('startSubagent', item, { startTask: '{ref}: {where}', whereSubagent: 'open a PR for {ref} ({title})' }), 'T5: open a PR for T5 (Report)');
+  assert.equal(promptFor('start', item, { startTask: 'Go {ref}' }), 'Go T5\n\nDo it here in this conversation.');
+  const root = await mkdtemp(path.join(tmpdir(), 'settings-'));
+  try {
+    await writeFile(path.join(root, '.slop-factory.json'), '{ "taskGlobs": ["a.md",], }');
+    const bad = await loadProjectSettings(root);
+    assert.deepEqual(bad.settings, {});
+    assert.match(bad.problem, /\.slop-factory\.json isn't valid JSON/);
+    await writeFile(path.join(root, '.slop-factory.json'), '["task.md"]');
+    assert.match((await loadProjectSettings(root)).problem, /should hold a JSON object/);
+    // Anything in a pattern list that isn't text is skipped; an empty task list means the defaults.
+    await writeFile(path.join(root, '.slop-factory.json'), JSON.stringify({ taskGlobs: [3, ''], docGlobs: ['notes/*.md', null], ignore: [] }));
+    assert.deepEqual(await loadTaskConfig(root), { taskGlobs: DEFAULT_TASK_CONFIG.taskGlobs, docGlobs: ['notes/*.md'], ignore: [] });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('every JSON example in the settings guide is valid and uses only known settings', async () => {
+  const guide = await readFile(new URL('../../docs/configuration.md', import.meta.url), 'utf8');
+  const { DEFAULT_PROMPTS } = await import('../dist/actions.js');
+  const blocks = [...guide.matchAll(/```json\n([\s\S]*?)```/g)].map((m) => m[1]);
+  assert.ok(blocks.length >= 10, `found ${blocks.length} examples`);
+  for (const b of blocks) {
+    const json = JSON.parse(b);
+    for (const k of Object.keys(json)) assert.ok(['taskGlobs', 'docGlobs', 'ignore', 'prompts'].includes(k), `unknown setting ${k}`);
+    for (const k of Object.keys(json.prompts ?? {})) assert.ok(k in DEFAULT_PROMPTS, `unknown prompt ${k}`);
+  }
+  // The built-in prompts it shows are the ones the app uses.
+  for (const [k, v] of Object.entries(DEFAULT_PROMPTS)) assert.ok(guide.includes(v), `the guide's ${k} is out of date`);
+});
+
 test('quick capture writes tasks, bugs and questions in the standard formats', async () => {
   const { nextId, insertTask, insertLegacyTask, insertBug, insertQuestion } = await import('../dist/capture.js');
   const date = new Date().toISOString().slice(0, 10);

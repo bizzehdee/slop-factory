@@ -118,6 +118,9 @@ export function promptFor(action: ItemAction, item: ActionItem, prompts: DeskPro
   let template = pick(starting ? startKey(item) : action);
   // Overrides written before {where} existed still say where the work runs.
   if (starting && !template.includes('{where}')) template += '\n\n{where}';
+  // {where} goes in first, so the placeholders in whereNow and whereSubagent are filled in too.
+  const where = action === 'startSubagent' ? pick('whereSubagent') : action === 'start' ? pick('whereNow') : '';
+  template = template.replace(/\{where\}/g, () => where);
   const values: Record<string, string> = {
     ref: item.kind === 'phase' ? (item.phase ? `phase ${item.phase}` : `the "${item.title}" section`) : item.id ?? `the task "${item.title}"`,
     title: item.title,
@@ -125,7 +128,6 @@ export function promptFor(action: ItemAction, item: ActionItem, prompts: DeskPro
     specPath,
     summaryPath,
     docs,
-    where: action === 'startSubagent' ? pick('whereSubagent') : action === 'start' ? pick('whereNow') : '',
   };
   return template.replace(/\{(\w+)\}/g, (all, k: string) => values[k] ?? all);
 }
