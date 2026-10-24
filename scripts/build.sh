@@ -5,7 +5,8 @@
 #   scripts/build.sh --universal      macOS: one app for Apple silicon and Intel
 #   scripts/build.sh --version 1.2.3  stamp a version first (the release workflow does this from the tag)
 #
-# Needs Node 18+, Rust, and the Tauri prerequisites for your OS (see README).
+# Needs Node 24, Rust, and the Tauri prerequisites for your OS (see CONTRIBUTING.md). The installers
+# carry their own Node 24, so the people who install them don't need Node.
 # The installers land in src-tauri/target/<target>/release/bundle/.
 set -eu
 
@@ -32,13 +33,16 @@ done
 npm ci
 npm --prefix sidecar ci
 
-set --
+set -- --config src-tauri/tauri.release.conf.json
 case "$(uname -s)" in
     Darwin)
         if [ "$universal" = 1 ]; then
             rustup target add aarch64-apple-darwin x86_64-apple-darwin
             node scripts/fetch-sdk-binaries.mjs darwin-x64 darwin-arm64
-            set -- --target universal-apple-darwin
+            node scripts/fetch-node.mjs universal-apple-darwin
+            set -- "$@" --target universal-apple-darwin
+        else
+            node scripts/fetch-node.mjs
         fi
         set -- "$@" --bundles app,dmg
         ;;
@@ -48,7 +52,8 @@ case "$(uname -s)" in
         if ldd --version 2>&1 | grep -qi musl; then :; else
             rm -rf sidecar/node_modules/@anthropic-ai/claude-agent-sdk-linux-*-musl
         fi
-        set -- --bundles deb,rpm,appimage
+        node scripts/fetch-node.mjs
+        set -- "$@" --bundles deb,rpm,appimage
         ;;
     *)
         echo "On Windows, use scripts/build.ps1." >&2

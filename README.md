@@ -21,10 +21,8 @@ Download the latest installer from the [Releases page](https://github.com/bizzeh
 | macOS (Apple silicon and Intel) | `Slop Factory_x.y.z_universal.dmg` |
 | Linux (64-bit) | `.deb` (Ubuntu, Debian), `.rpm` (Fedora, openSUSE) or `.AppImage` (anything else) |
 
-You also need:
-
-- **Node.js 18 or newer** ([nodejs.org](https://nodejs.org)). The app runs part of itself on Node.
-- **A Claude subscription**, or a local model server (see [Local models](#local-models)).
+You also need **a Claude subscription**, or a local model server (see [Local models](#local-models)).
+Everything else comes in the installer.
 
 The installers aren't signed yet. On macOS, open the app the first time with right-click, then
 **Open**. On Windows, choose **More info**, then **Run anyway**.
@@ -189,8 +187,6 @@ the queue, or add it to `.gitignore`.
   position.
 - **Your settings** are kept in `~/.slop-factory`. Settings from earlier versions (`~/.claude-desk`)
   move there by themselves.
-- **macOS and Node.** Apps opened from the Finder don't see your shell's `PATH`. If Slop Factory
-  can't find Node, set `SLOP_FACTORY_NODE` to its full path (for example with `launchctl setenv`).
 - **Conversations** last as long as the app is open; quitting ends them. A subagent's own steps show
   folded under the step that started it.
 

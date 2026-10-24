@@ -52,19 +52,22 @@ jobs:
         include:
           - name: Windows amd64
             os: windows-latest
+            node: x86_64-pc-windows-msvc
             args: --bundles nsis,msi
           - name: Linux amd64
             os: ubuntu-22.04
+            node: x86_64-unknown-linux-gnu
             args: --bundles deb,rpm,appimage
           - name: macOS universal
             os: macos-latest
+            node: universal-apple-darwin
             args: --target universal-apple-darwin --bundles app,dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -88,6 +91,9 @@ jobs:
       - name: Both Mac engines for the universal app
         if: runner.os == 'macOS'
         run: node scripts/fetch-sdk-binaries.mjs darwin-x64 darwin-arm64
+      # The installers carry Node, so nobody has to install it to run the app.
+      - name: Node.js for the installer
+        run: node scripts/fetch-node.mjs ${{ matrix.node }}
       - name: Drop the musl engine from the glibc Linux packages
         if: runner.os == 'Linux'
         run: rm -rf sidecar/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64-musl
@@ -96,7 +102,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           releaseId: ${{ needs.create.outputs.release_id }}
-          args: ${{ matrix.args }}
+          args: --config src-tauri/tauri.release.conf.json ${{ matrix.args }}
 
   publish:
     name: Publish the release

@@ -7,7 +7,8 @@
   pwsh scripts/build.ps1 -Version 1.2.3
 
 .NOTES
-  Needs Node 18+, Rust (MSVC toolchain) and the WebView2 runtime (see README).
+  Needs Node 24, Rust (MSVC toolchain) and the WebView2 runtime (see CONTRIBUTING.md).
+  The installers carry their own Node 24.
   The installers land in src-tauri\target\release\bundle\.
 #>
 param(
@@ -33,7 +34,9 @@ if ($Version) { Invoke-Step node @('scripts/set-version.mjs', $Version) }
 
 Invoke-Step npm @('ci')
 Invoke-Step npm @('--prefix', 'sidecar', 'ci')
-Invoke-Step npx @('tauri', 'build', '--bundles', 'nsis,msi')
+# The installers carry their own Node, so the people who install them don't need it.
+Invoke-Step node @('scripts/fetch-node.mjs', 'x86_64-pc-windows-msvc')
+Invoke-Step npx @('tauri', 'build', '--config', 'src-tauri/tauri.release.conf.json', '--bundles', 'nsis,msi')
 
 Write-Host ''
 Write-Host 'Done. Installers are in src-tauri\target\release\bundle\.'

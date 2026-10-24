@@ -30,6 +30,21 @@ fn sidecar_entry(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Couldn't find the app's resources: {e}"))
 }
 
+/// The Node.js that runs the sidecar: SLOP_FACTORY_NODE if set, else the copy the installer put
+/// beside the app (Tauri's externalBin), else whatever `node` is on PATH (development builds).
+fn node_binary() -> String {
+    if let Ok(p) = std::env::var("SLOP_FACTORY_NODE") {
+        return p;
+    }
+    let name = if cfg!(windows) { "node.exe" } else { "node" };
+    std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join(name)))
+        .filter(|p| p.is_file())
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "node".into())
+}
+
 fn notice(app: &AppHandle, level: &str, text: String) {
     let line = serde_json::json!({ "type": "notice", "level": level, "text": text }).to_string();
     let _ = app.emit("sidecar://event", line);
@@ -50,9 +65,7 @@ fn sidecar_start(app: AppHandle, state: State<'_, Sidecar>) -> Result<(), String
     }
 
     let entry = sidecar_entry(&app)?;
-    // Node must be on PATH (or set SLOP_FACTORY_NODE). GUI apps on macOS don't inherit
-    // your shell PATH, so the env var is the reliable option there.
-    let node = std::env::var("SLOP_FACTORY_NODE").unwrap_or_else(|_| "node".into());
+    let node = node_binary();
 
     let mut cmd = Command::new(&node);
     cmd.arg(&entry)
@@ -68,7 +81,7 @@ fn sidecar_start(app: AppHandle, state: State<'_, Sidecar>) -> Result<(), String
     }
 
     let mut child = cmd.spawn().map_err(|e| {
-        format!("Couldn't start the sidecar with `{node}` ({e}). Install Node 18+ or set SLOP_FACTORY_NODE to its full path.")
+        format!("Couldn't start the sidecar with `{node}` ({e}). Install Node 24 or set SLOP_FACTORY_NODE to its full path.")
     })?;
 
     let stdout = child.stdout.take().ok_or("sidecar has no stdout")?;

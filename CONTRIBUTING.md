@@ -39,7 +39,8 @@ This file is for working on Slop Factory itself. To use it, see the [README](REA
 
 ## Requirements
 
-- Node 18 or newer.
+- Node 24 (`.node-version`). The installers carry their own Node 24, fetched by
+  `scripts/fetch-node.mjs`, so people installing the app don't need Node.
 - Rust and the [Tauri prerequisites](https://tauri.app/start/prerequisites/) for your OS. On Linux:
 
   ```bash
@@ -99,6 +100,11 @@ pwsh scripts/build.ps1            # Windows: NSIS setup and MSI
 Both take a version (`--version 1.2.3`, `-Version 1.2.3`), stamped into every manifest by
 `scripts/set-version.mjs`. The installers land under `src-tauri/target/`.
 
+Both scripts first fetch Node 24 for the target with `scripts/fetch-node.mjs` (the newest 24.x,
+checked against Node's SHA-256 sums) into `src-tauri/binaries/`, and build with
+`src-tauri/tauri.release.conf.json`, which adds it as an `externalBin`. The app runs that copy;
+development builds use the `node` on your `PATH`.
+
 The agent SDK ships its engine as one npm package per platform and npm installs only this
 machine's. `scripts/fetch-sdk-binaries.mjs` adds others; the universal Mac build uses it for both
 Mac architectures.
@@ -113,7 +119,7 @@ every platform has finished.
 
 | Variable | Effect |
 |---|---|
-| `SLOP_FACTORY_NODE` | Full path to `node`. Useful on macOS, where apps don't inherit your shell `PATH`. |
+| `SLOP_FACTORY_NODE` | Full path to the `node` that runs the sidecar, instead of the one the installer carries. |
 | `SLOP_FACTORY_SIDECAR` | Path to a different sidecar `index.js`. |
 | `SLOP_FACTORY_CONFIG_DIR` | Where settings are kept instead of `~/.slop-factory`. |
 | `SLOP_FACTORY_ALLOW_API_KEY` | `1` keeps `ANTHROPIC_API_KEY` instead of removing it. |

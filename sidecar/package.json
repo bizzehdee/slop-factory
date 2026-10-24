@@ -19,5 +19,8 @@
   },
   "private": true,
   "type": "module",
-  "license": "BSD-3-Clause"
+  "license": "BSD-3-Clause",
+  "engines": {
+    "node": ">=24"
+  }
 }
