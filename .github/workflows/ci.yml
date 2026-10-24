@@ -37,6 +37,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
@@ -45,8 +48,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
-      # The shell embeds the built interface, so build that first.
+      # The shell embeds the built interface and bundles the sidecar (its dist and node_modules
+      # must exist for the build script), so build both first.
       - run: npm ci
+      - run: npm --prefix sidecar ci
+      - run: npm run sidecar:build
       - run: npm run build
       - run: cargo check --locked --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
