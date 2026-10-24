@@ -266,6 +266,20 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'restartSession':
       return restartSession(need(cmd.project), !!cmd.fresh);
+    case 'rewindFiles': {
+      const p = need(cmd.project);
+      let result: Awaited<ReturnType<typeof p.session.rewindFiles>>;
+      try {
+        result = await p.session.rewindFiles(cmd.uuid, cmd.dryRun);
+      } catch (err) {
+        result = { canRewind: false, error: err instanceof Error ? err.message : String(err) };
+      }
+      if (!cmd.dryRun && result.canRewind) {
+        const n = result.filesChanged?.length ?? 0;
+        p.out({ type: 'notice', level: 'info', text: `Undid the changes to ${n} file${n === 1 ? '' : 's'}.` });
+      }
+      return p.out({ type: 'rewound', uuid: cmd.uuid, dryRun: cmd.dryRun, ...result });
+    }
     case 'subagentLog': {
       const p = need(cmd.project);
       return p.out({ type: 'subagentLog', agentId: cmd.agentId, events: await p.session.subagentLog(cmd.agentId) });

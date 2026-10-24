@@ -14,6 +14,7 @@ import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, 
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
+import { endTurn, noteToolUse, onRewound, startTurn } from './changes';
 
 // ---------- events ----------
 
@@ -137,6 +138,7 @@ export function onEvent(e: SidecarEvent): void {
       break;
     }
     case 'user':
+      startTurn(p, e);
       userMessage(p, e.text, e.action);
       scrollToEnd(p);
       p.freshTurn = true;
@@ -159,12 +161,15 @@ export function onEvent(e: SidecarEvent): void {
       return;
     case 'toolUse':
       recordAgentEvent(p, e);
+      noteToolUse(p, e.name, e.input, e.parent);
       return toolUse(p, e.id, e.name, e.input, e.parent);
     case 'toolResult':
       recordAgentEvent(p, e);
       return toolResult(p, e.toolUseId, e.isError, e.preview);
     case 'subagentLog':
       return onSubagentLog(p, e.agentId, e.events);
+    case 'rewound':
+      return onRewound(p, e);
     case 'permissionRequest':
       permissionRequest(p, e.id, e.toolName, e.input, e.reason);
       notify(p, 'needsYou', `Wants to use ${e.toolName}.`);
@@ -177,6 +182,7 @@ export function onEvent(e: SidecarEvent): void {
       return markAnswered(p, e.id, 'Cancelled');
     case 'turnEnd':
       p.lastTurn = e;
+      endTurn(p);
       if (!p.replaying) refreshWorktrees(p);
       if (e.stopped) notice(p, 'info', 'Stopped.');
       else if (e.isError) notice(p, 'error', e.errors?.length ? e.errors.join('\n') : 'The turn ended with an error.');

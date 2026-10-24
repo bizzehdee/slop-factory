@@ -8,6 +8,7 @@ import { prioritise } from './queue';
 import { renderWorktreeView } from './worktrees';
 import { Proj, projects, send } from './state';
 import { renderSubagentView } from './subagents';
+import { renderChangesView } from './changes';
 
 // ---------- progress panel (spec and summary) ----------
 
@@ -18,7 +19,7 @@ export interface PlainDoc {
   title: string;
 }
 export let docsView:
-  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string }
+  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string; changes?: string }
   | undefined;
 export const setDocsView = (view: typeof docsView) => (docsView = view);
 
@@ -63,7 +64,7 @@ export function showProgress(p: Proj, item: BoardItem, openOn?: string): void {
 }
 
 export function refreshDocs(p: Proj): void {
-  if (!docsView || docsView.project !== p.dir || docsView.question || docsView.worktree || docsView.subagent) return;
+  if (!docsView || docsView.project !== p.dir || docsView.question || docsView.worktree || docsView.subagent || docsView.changes) return;
   if (docsView.doc) {
     docsView.requestId = Math.random().toString(36).slice(2);
     send({ type: 'readDocs', project: p.dir, requestId: docsView.requestId, key: docsView.key, paths: [docsView.doc.rel] });
@@ -89,6 +90,7 @@ export function renderDocs(): void {
   if (docsView.question) return renderQuestionView(p, docsView.question);
   if (docsView.worktree) return renderWorktreeView(p);
   if (docsView.subagent) return renderSubagentView(p);
+  if (docsView.changes) return renderChangesView(p);
   resetQuestionView();
   const plain = docsView.doc;
   const item = p && !plain ? allItems(p).get(docsView.key) : undefined;

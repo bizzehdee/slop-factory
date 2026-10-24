@@ -2,6 +2,7 @@ import { type Bridge } from '../bridge';
 import type { AskedQuestion, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
+import type { FileEdit } from './changes';
 
 // ---------- state ----------
 
@@ -43,6 +44,10 @@ export interface Proj {
   laneRun?: LaneRun; // the subagent-lane item running now
   worktrees: WorktreeInfo[];
   lastReply?: string; // the agent's latest reply, for notifications
+  turnUuid?: string; // the message the current turn answers, a checkpoint to undo back to
+  turnEdits: FileEdit[];
+  turnChanges: Map<string, FileEdit[]>; // each turn's edits, by its message
+  changeCards: Map<string, HTMLElement>;
   queueRan?: boolean; // the queue started something since the last notification
   agentLogs: Map<string, Extract<ProjectEvent, { type: 'assistantText' | 'toolUse' | 'toolResult' }>[]>; // each subagent's own messages, by its task id
 }
@@ -115,5 +120,8 @@ export function newProject(dir: string, name: string): Proj {
     subagentLane: new Set(),
     worktrees: [],
     agentLogs: new Map(),
+    turnEdits: [],
+    turnChanges: new Map(),
+    changeCards: new Map(),
   };
 }

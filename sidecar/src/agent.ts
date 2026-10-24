@@ -115,6 +115,8 @@ export class AgentSession {
         includePartialMessages: true,
         // Subagents' own text too, tagged with the subagent, so the window can show each one's transcript.
         forwardSubagentText: true,
+        // Back up files before the agent changes them, so a turn's changes can be undone.
+        enableFileCheckpointing: true,
         // AskUserQuestion reaches canUseTool like any tool; the Questions panel renders it.
         canUseTool: (toolName, input, opts) => this.askPermission(toolName, input, opts),
         stderr: (data) => process.stderr.write(`[claude] ${data}`),
@@ -136,15 +138,22 @@ export class AgentSession {
 
   send(text: string, action?: { kind: ItemAction; key: string }): void {
     this.pendingTurns++;
-    this.emit({ type: 'user', text, action });
+    const uuid = randomUUID();
+    this.emit({ type: 'user', text, action, uuid });
     this.emit({ type: 'busy', busy: true });
     this.input.push({
       type: 'user',
       message: { role: 'user', content: text },
       parent_tool_use_id: null,
       origin: { kind: 'human' },
-      uuid: randomUUID(),
+      uuid,
     } as SDKUserMessage);
+  }
+
+  /** Put the files the agent changed back as they were when that message was sent (checkpoints). */
+  async rewindFiles(uuid: string, dryRun: boolean): Promise<{ canRewind: boolean; error?: string; filesChanged?: string[]; insertions?: number; deletions?: number }> {
+    if (!this.q) return { canRewind: false, error: 'The agent has not started yet.' };
+    return this.q.rewindFiles(uuid, { dryRun });
   }
 
   async interrupt(): Promise<void> {

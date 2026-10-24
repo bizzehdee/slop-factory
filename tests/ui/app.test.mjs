@@ -287,3 +287,24 @@ test('a project you are not looking at notifies you when it finishes or needs yo
   await page.waitForTimeout(1500);
   assert.equal(await page.evaluate(() => window.__notes.length), 1);
 });
+
+test("a turn's changes are listed, can be reviewed, and can be undone", async () => {
+  const dir = await app.project({ 'notes.txt': 'start\n' });
+  const page = await app.open(dir);
+  page.on('dialog', (d) => d.accept());
+  await page.fill('#prompt', 'Please edit the notes');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.turn-changes:has-text("Changed notes.txt")');
+  assert.equal(await readFile(path.join(dir, 'notes.txt'), 'utf8'), 'start\nPlease edit the notes\n');
+  await page.fill('#prompt', 'Edit them again');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelectorAll('.turn-changes').length === 2);
+  await page.click('.turn-changes >> nth=0 >> button:has-text("Review")');
+  await page.waitForSelector('#docs-body .diff-lines .add:has-text("+Please edit the notes")');
+  await page.click('#docs-close');
+  // Undoing the first turn puts the file back as it was before it, taking the later change with it.
+  await page.click('.turn-changes >> nth=0 >> button:has-text("Undo")');
+  await page.waitForSelector('.turn-changes.undone');
+  await page.waitForSelector('.notice:has-text("Undid the changes to 1 file.")');
+  assert.equal(await readFile(path.join(dir, 'notes.txt'), 'utf8'), 'start\n');
+});

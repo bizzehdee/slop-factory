@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { messagesToEvents } from './history.js';
 import { configDir } from './names.js';
@@ -14,6 +14,7 @@ import { ProcessTracker } from './processes.js';
 //   "questions"    replies with a numbered list of questions
 //   "subagent"     runs a background subagent for a moment
 //   "slow"         takes a few seconds, so a test can press Stop
+//   "edit"         adds a line to notes.txt in the project, with a checkpoint to undo it
 //   anything else  replies "Done: <first line of the message>"
 
 export const ASKED: AskedQuestion[] = [
@@ -109,10 +110,43 @@ export class FakeSession {
 
   send(text: string, action?: { kind: ItemAction; key: string }): void {
     this.pendingTurns++;
-    this.emit({ type: 'user', text, action });
+    const uuid = randomUUID();
+    this.turnIds.push(uuid);
+    this.emit({ type: 'user', text, action, uuid });
     this.emit({ type: 'busy', busy: true });
     this.record('user', text);
-    void this.turn(text);
+    void this.turn(text, uuid);
+  }
+
+  // Checkpoints, as enableFileCheckpointing keeps them: each file's content before a turn first changed it.
+  private turnIds: string[] = [];
+  private backups = new Map<string, Map<string, string | null>>();
+
+  private changeFile(uuid: string, file: string, next: string): string {
+    const abs = path.join(this.cwd, file);
+    const before = existsSync(abs) ? readFileSync(abs, 'utf8') : null;
+    const saved = this.backups.get(uuid) ?? new Map<string, string | null>();
+    if (!saved.has(file)) saved.set(file, before);
+    this.backups.set(uuid, saved);
+    writeFileSync(abs, next);
+    return before ?? '';
+  }
+
+  async rewindFiles(uuid: string, dryRun: boolean): Promise<{ canRewind: boolean; error?: string; filesChanged?: string[]; insertions?: number; deletions?: number }> {
+    const from = this.turnIds.indexOf(uuid);
+    if (from < 0) return { canRewind: false, error: 'No checkpoint for that message.' };
+    // The earliest saved state of each file at or after this turn is how it was when the turn began.
+    const restore = new Map<string, string | null>();
+    for (const id of this.turnIds.slice(from)) for (const [f, c] of this.backups.get(id) ?? []) if (!restore.has(f)) restore.set(f, c);
+    if (!restore.size) return { canRewind: false, error: 'Nothing changed since that message.' };
+    if (!dryRun) {
+      for (const [f, c] of restore) {
+        if (c === null) rmSync(path.join(this.cwd, f), { force: true });
+        else writeFileSync(path.join(this.cwd, f), c);
+      }
+      for (const id of this.turnIds.slice(from)) this.backups.delete(id);
+    }
+    return { canRewind: true, filesChanged: [...restore.keys()], insertions: 0, deletions: restore.size };
   }
 
   async interrupt(): Promise<void> {
@@ -169,7 +203,7 @@ export class FakeSession {
     this.record('assistant', text);
   }
 
-  private async turn(text: string): Promise<void> {
+  private async turn(text: string, uuid: string): Promise<void> {
     let stopped = false;
     const stop = new Promise<void>((resolve) => (this.stopTurn = () => ((stopped = true), resolve())));
     const lower = text.toLowerCase();
@@ -207,6 +241,14 @@ export class FakeSession {
         this.emit(last);
         this.processes.ended({ task_id: taskId, status: 'completed', summary: 'Finished in its worktree.' });
         return this.reply('The subagent has finished.');
+      }
+      if (lower.includes('edit')) {
+        const before = existsSync(path.join(this.cwd, 'notes.txt')) ? readFileSync(path.join(this.cwd, 'notes.txt'), 'utf8') : '';
+        const line = `${text.split('\n')[0]}\n`;
+        this.changeFile(uuid, 'notes.txt', before + line);
+        const id = `edit_${randomUUID().slice(0, 8)}`;
+        this.emit({ type: 'toolUse', id, name: before ? 'Edit' : 'Write', input: before ? { file_path: path.join(this.cwd, 'notes.txt'), old_string: before, new_string: before + line } : { file_path: path.join(this.cwd, 'notes.txt'), content: line }, parent: null });
+        this.emit({ type: 'toolResult', toolUseId: id, isError: false, preview: 'The file notes.txt has been updated.' });
       }
       if (lower.includes('slow')) await this.sleep(4000);
       this.reply(`Done: ${text.split('\n')[0].slice(0, 80)}`);
