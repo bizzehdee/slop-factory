@@ -177,6 +177,8 @@ export function sessionSettings(p: ProviderConfig): { env?: Record<string, strin
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
     CLAUDE_AGENT_SDK_CLIENT_APP: `slop-factory/${appVersion()}`,
   };
+  // The agent knows only Anthropic models' windows: tell it the local server's, so it compacts in time.
+  if (p.contextTokens) env.CLAUDE_CODE_MAX_CONTEXT_TOKENS = String(p.contextTokens);
   // Don't let subscription credentials or an API key override the local server.
   delete env.ANTHROPIC_API_KEY;
   delete env.CLAUDE_CODE_OAUTH_TOKEN;

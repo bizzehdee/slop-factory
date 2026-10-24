@@ -8,12 +8,13 @@ import {
   type PermissionUpdate,
 } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, Gauge, Gauges, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
+import { serverContextWindow } from './context.js';
 
 /** An async queue we hand to query() as its prompt, so one Claude Code session lives across many turns. */
 class InputQueue implements AsyncIterable<SDKUserMessage> {
@@ -288,6 +289,10 @@ export class AgentSession {
         // A fraction; a percentage is taken as one too, in case that changes.
         const used = r.utilization != null && r.utilization > 1 ? r.utilization / 100 : r.utilization;
         this.emit({ type: 'planLimit', limit: { status: r.status, window: r.rateLimitType, utilization: used, resetsAt: r.resetsAt } });
+        // Keep the gauges current too, in case the usage figures can't be asked for.
+        const g = used != null ? { used, resetsAt: r.resetsAt ? r.resetsAt * 1000 : undefined } : undefined;
+        if (g && r.rateLimitType === 'five_hour') this.limits.fiveHour = g;
+        if (g && r.rateLimitType === 'seven_day') this.limits.week = g;
         return;
       }
 
@@ -313,6 +318,7 @@ export class AgentSession {
           errors: stopped ? undefined : errors,
         });
         if (this.pendingTurns === 0) this.emit({ type: 'busy', busy: false });
+        void this.reportGauges();
         return;
       }
 
@@ -322,6 +328,34 @@ export class AgentSession {
   }
 
   private currentMsgId = '';
+
+  private limitsAt = 0;
+  private limits: Pick<Gauges, 'fiveHour' | 'week'> = {};
+
+  /** The Session panel's gauges, after each turn: the context, and the subscription's usage windows. */
+  private async reportGauges(): Promise<void> {
+    const q = this.q;
+    if (!q) return;
+    const gauges: Gauges = {};
+    const c = await q.getContextUsage({ detail: 'summary' }).catch(() => undefined);
+    if (this.provider.kind !== 'subscription') {
+      // A local model: the server knows the real window; only the context applies.
+      const max = (await serverContextWindow(this.provider).catch(() => undefined)) ?? this.provider.contextTokens;
+      gauges.context = { tokens: c?.totalTokens ?? 0, max: max ?? c?.maxTokens, fromServer: !!max };
+    } else {
+      if (c) gauges.context = { tokens: c.totalTokens, max: c.maxTokens };
+      // The windows change slowly; ask at most once a minute.
+      if (Date.now() - this.limitsAt > 60_000) {
+        this.limitsAt = Date.now();
+        const u = await q.usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET({ skipBehaviors: true }).catch(() => undefined);
+        const gauge = (w?: { utilization: number | null; resets_at: string | null } | null): Gauge | undefined =>
+          w && w.utilization != null ? { used: Math.min(1, Math.max(0, w.utilization / 100)), resetsAt: w.resets_at ? Date.parse(w.resets_at) || undefined : undefined } : undefined;
+        if (u?.rate_limits) this.limits = { fiveHour: gauge(u.rate_limits.five_hour), week: gauge(u.rate_limits.seven_day) };
+      }
+      Object.assign(gauges, this.limits);
+    }
+    this.emit({ type: 'gauges', gauges });
+  }
 
   private emitCommands(list: { name: string; description: string; argumentHint?: string }[]): void {
     this.emit({ type: 'commands', commands: list.map((c) => ({ name: c.name, description: c.description, ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}) })) });

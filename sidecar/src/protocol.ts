@@ -13,6 +13,7 @@ export interface ProviderConfig {
   authToken?: string;
   model?: string;
   smallModel?: string; // used for quick background calls; defaults to model
+  contextTokens?: number; // the window the local server gives the model, asked for when a session starts (not stored)
 }
 
 // ---------- UI -> sidecar ----------
@@ -307,6 +308,19 @@ export interface ProjectUsage {
   models: { model: string; costUsd: number; tokens: number }[];
 }
 
+/** How full something is: a share from 0 to 1, and when it empties again if it does. */
+export interface Gauge {
+  used: number;
+  resetsAt?: number; // ms since the epoch
+}
+
+/** The Session panel's gauges: the subscription's 5-hour and weekly windows, and the context. */
+export interface Gauges {
+  fiveHour?: Gauge;
+  week?: Gauge;
+  context?: { tokens: number; max?: number; fromServer?: boolean }; // fromServer: the local server said how big
+}
+
 /** Your subscription's usage limits, as the agent last reported them. */
 export interface PlanLimit {
   status: 'allowed' | 'allowed_warning' | 'rejected';
@@ -355,6 +369,7 @@ export type ProjectEvent =
   | { type: 'usage'; usage: ProjectUsage }
   | { type: 'git'; info: GitInfo }
   | { type: 'planLimit'; limit: PlanLimit }
+  | { type: 'gauges'; gauges: Gauges }
   | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers
   | { type: 'busy'; busy: boolean; status?: string | null }
   | { type: 'user'; text: string; action?: { kind: SentAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point

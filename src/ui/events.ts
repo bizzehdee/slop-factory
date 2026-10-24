@@ -15,7 +15,7 @@ import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktre
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
 import { clearQueuedTurns, endTurn, noteToolUse, onRewound, startTurn } from './changes';
-import { renderUsageView, setPlanLimit } from './usage';
+import { noteGauges, renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
 import { renderGit, setFetchMinutes } from './git';
 
@@ -124,6 +124,10 @@ export function onEvent(e: SidecarEvent): void {
     case 'usage':
       p.usage = e.usage;
       if (docsView?.project === p.dir && docsView.usage) renderUsageView(p);
+      if (isActive) renderSession();
+      return;
+    case 'gauges':
+      noteGauges(p, e.gauges);
       if (isActive) renderSession();
       return;
     case 'planLimit':

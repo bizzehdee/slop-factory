@@ -2931,3 +2931,50 @@ textarea {
   font-weight: 700;
   cursor: help;
 }
+
+/* ---------- gauges ---------- */
+
+.gauges {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.gauges[hidden] {
+  display: none;
+}
+.gauge-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: var(--step--1);
+}
+.gauge-label {
+  color: var(--muted);
+}
+.gauge-value {
+  font-variant-numeric: tabular-nums;
+}
+.gauge-track {
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: var(--raised);
+  overflow: hidden;
+}
+.gauge-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--done);
+  transition: width 0.4s ease;
+}
+.gauge.high .gauge-fill {
+  background: var(--clay);
+}
+.gauge.full .gauge-fill {
+  background: var(--bug);
+}
+.gauge-note {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 0.75rem;
+}

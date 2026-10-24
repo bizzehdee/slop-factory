@@ -4,6 +4,7 @@ import path from 'node:path';
 import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
+import { serverContextWindow } from './context.js';
 import { configDir } from './names.js';
 import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
@@ -302,6 +303,15 @@ export class FakeSession {
     this.totals.out += 20;
     this.onUsage?.(this.sessionId, this.totals.costUsd, { 'fake-model': { inputTokens: 10 * (this.totals.out / 20), outputTokens: this.totals.out, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: this.totals.costUsd } }, 100);
     this.emit({ type: 'turnEnd', durationMs: 100, numTurns: 1, isError: false, stopped, inputTokens: 10, outputTokens: 20, costUsd: this.totals.costUsd });
+    // Gauges as the real agent reports them: the context grows with each turn.
+    const tokens = 18_000 + 6_000 * (this.totals.out / 20);
+    if (this.provider.kind === 'subscription') {
+      const hour = 3_600_000;
+      this.emit({ type: 'gauges', gauges: { fiveHour: { used: 0.42, resetsAt: Date.now() + 2 * hour }, week: { used: 0.86, resetsAt: Date.now() + 75 * hour }, context: { tokens, max: 200_000 } } });
+    } else {
+      const max = (await serverContextWindow(this.provider).catch(() => undefined)) ?? this.provider.contextTokens;
+      this.emit({ type: 'gauges', gauges: { context: { tokens, max, fromServer: !!max } } });
+    }
     if (this.pendingTurns === 0) this.emit({ type: 'busy', busy: false });
   }
 }

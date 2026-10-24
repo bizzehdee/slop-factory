@@ -976,3 +976,44 @@ test('PATH gets the login shell entries first, then the usual install folders, w
     '/Users/me/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/local/bin:/usr/sbin:/sbin:/Users/me/.local/bin',
   );
 });
+
+test("a local server's context window comes from llama.cpp's /props or Ollama, and reaches the agent", async () => {
+  const http = await import('node:http');
+  const { parseLlamaProps, parseLlamaSlots, parseOllamaPs, parseOllamaShow, serverContextWindow, clearContextCache } = await import('../dist/context.js');
+  const { sessionSettings } = await import('../dist/providers.js');
+  assert.equal(parseLlamaProps({ default_generation_settings: { n_ctx: 32768 } }), 32768);
+  assert.equal(parseLlamaProps({ n_ctx: 8192 }), 8192);
+  assert.equal(parseLlamaSlots([{ id: 0, n_ctx: 4096 }]), 4096);
+  assert.equal(parseOllamaPs({ models: [{ name: 'qwen3-coder:latest', context_length: 16384 }] }, 'qwen3-coder'), 16384);
+  assert.equal(parseOllamaPs({ models: [] }, 'qwen3-coder'), undefined);
+  assert.equal(parseOllamaShow({ parameters: 'stop "<|im_end|>"\nnum_ctx                        65536' }), 65536);
+  assert.equal(parseOllamaShow({ parameters: 'temperature 0.7' }), undefined);
+
+  let loaded = false;
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/props') return res.end(JSON.stringify({ default_generation_settings: { n_ctx: 32768 } }));
+    // Ollama: the loaded model's context, else what it's set up with.
+    if (req.url === '/api/ps') return res.end(JSON.stringify({ models: loaded ? [{ name: 'qwen3-coder:latest', context_length: 40960 }] : [] }));
+    if (req.url === '/api/show') return res.end(JSON.stringify({ parameters: 'num_ctx 8192' }));
+    res.statusCode = 404;
+    res.end('{}');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    clearContextCache();
+    assert.equal(await serverContextWindow({ id: 'l', name: 'l', kind: 'llamacpp', baseUrl: base, model: 'm' }), 32768);
+    assert.equal(await serverContextWindow({ id: 'o', name: 'o', kind: 'ollama', baseUrl: `${base}/v1`, model: 'qwen3-coder' }), 8192, 'not loaded: its num_ctx');
+    clearContextCache();
+    loaded = true;
+    assert.equal(await serverContextWindow({ id: 'o', name: 'o', kind: 'ollama', baseUrl: base, model: 'qwen3-coder' }), 40960, 'loaded: what it runs with');
+    assert.equal(await serverContextWindow({ id: 's', name: 's', kind: 'subscription' }), undefined);
+    assert.equal(await serverContextWindow({ id: 'x', name: 'x', kind: 'custom', baseUrl: 'http://127.0.0.1:1', model: 'm' }), undefined, 'a server that does not answer');
+  } finally {
+    server.close();
+  }
+  const env = sessionSettings({ id: 'l', name: 'l', kind: 'llamacpp', baseUrl: base, model: 'm', contextTokens: 32768 }).env;
+  assert.equal(env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, '32768');
+  assert.equal(sessionSettings({ id: 'l', name: 'l', kind: 'llamacpp', baseUrl: base, model: 'm' }).env.CLAUDE_CODE_MAX_CONTEXT_TOKENS, undefined);
+});

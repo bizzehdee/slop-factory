@@ -438,8 +438,12 @@ test("each project's usage is counted and shown, with the plan's limit", async (
     await page.waitForSelector(`.msg.assistant:has-text("Done: ${text}")`);
   }
   await page.waitForSelector('#session dd:has-text("Today $0.50")');
-  await page.waitForSelector('#session dd.warn-text, #session dd .warn-text');
-  assert.match(await page.textContent('#session'), /82% of your 5-hour limit used/);
+  // Gauges: the 5-hour and weekly windows, and the context.
+  await page.waitForSelector('#gauges .gauge[aria-label="Context"]');
+  assert.equal(await page.getAttribute('#gauges .gauge[aria-label="5-hour limit"]', 'aria-valuenow'), '42');
+  assert.match(await page.textContent('#gauges .gauge[aria-label="5-hour limit"]'), /42%.*Resets/);
+  assert.equal(await page.getAttribute('#gauges .gauge[aria-label="Weekly limit"]', 'class'), 'gauge high');
+  assert.match(await page.textContent('#gauges .gauge[aria-label="Context"]'), /30k \/ 200k/);
   await page.click('#session .link-button:has-text("Details")');
   await page.waitForSelector('.usage-stats');
   assert.match(await page.textContent('.usage-stats'), /\$0\.50/);
@@ -566,4 +570,36 @@ test('git: initialise, publish, fetch and pull, push, and commit through the age
   await page.click('#git-branch');
   assert.equal(await page.getAttribute('#menu .menu-item:has-text("Pull automatically")', 'aria-checked'), 'true');
   assert.deepEqual(page.errors, []);
+});
+
+test("a local model's context gauge is sized by its server, with no subscription limits", async () => {
+  const http = await import('node:http');
+  // A stand-in llama.cpp server: its models, and the context each slot gets.
+  const server = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen3-coder' }] }));
+    if (req.url === '/props') return res.end(JSON.stringify({ default_generation_settings: { n_ctx: 32768 } }));
+    res.statusCode = 404;
+    res.end('{}');
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const port = server.address().port;
+  try {
+    const page = await app.open(await app.project());
+    await page.click('#open-settings');
+    await page.click('#settings-dialog button:has-text("Add a local model")');
+    await page.check('#provider-form input[name=kind][value=llamacpp]');
+    await page.fill('#provider-form input[name=baseUrl]', `http://127.0.0.1:${port}`);
+    await page.fill('#provider-form input[name=model]', 'qwen3-coder');
+    await page.click('#provider-save');
+    await page.waitForSelector('.notice:has-text("Switched to")');
+    await page.keyboard.press('Escape');
+    await page.fill('#prompt', 'Hello');
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('#gauges .gauge[aria-label="Context"]');
+    assert.match(await page.textContent('#gauges'), /24k \/ 33k.*Window size from llama\.cpp/);
+    assert.equal(await page.locator('#gauges .gauge').count(), 1, 'only the context: a local model has no subscription limits');
+  } finally {
+    server.close();
+  }
 });

@@ -1,4 +1,4 @@
-import type { PlanLimit } from '../../sidecar/src/protocol';
+import type { Gauge, Gauges, PlanLimit } from '../../sidecar/src/protocol';
 import { docsView, setDocsView } from './docs';
 import { $, h } from './dom';
 import { Proj, providerOf, send } from './state';
@@ -7,6 +7,70 @@ import { Proj, providerOf, send } from './state';
 
 export let planLimit: PlanLimit | undefined;
 export const setPlanLimit = (l: PlanLimit) => (planLimit = l);
+
+// The subscription's windows are the account's, whichever project last reported them.
+export let accountLimits: Pick<Gauges, 'fiveHour' | 'week'> = {};
+export function noteGauges(p: Proj, g: Gauges): void {
+  p.gauges = g;
+  if (g.fiveHour || g.week) accountLimits = { fiveHour: g.fiveHour ?? accountLimits.fiveHour, week: g.week ?? accountLimits.week };
+}
+
+/** The gauge for a window: reported directly, or else from the agent's latest limit notice. */
+function windowGauge(which: 'five_hour' | 'seven_day'): Gauge | undefined {
+  const direct = which === 'five_hour' ? accountLimits.fiveHour : accountLimits.week;
+  if (direct) return direct;
+  if (planLimit?.window === which && planLimit.utilization != null) return { used: planLimit.utilization, resetsAt: planLimit.resetsAt ? planLimit.resetsAt * 1000 : undefined };
+  return undefined;
+}
+
+function resets(t?: number): string {
+  if (!t) return '';
+  const d = new Date(t);
+  const soon = t - Date.now() < 20 * 3_600_000;
+  return `Resets ${soon ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}`;
+}
+
+function gauge(label: string, used: number | undefined, value: string, note: string): HTMLElement {
+  const pct = used == null ? undefined : Math.round(Math.min(1, Math.max(0, used)) * 100);
+  const level = pct == null ? '' : pct >= 90 ? ' full' : pct >= 75 ? ' high' : '';
+  return h(
+    'div',
+    {
+      class: `gauge${level}`,
+      role: 'meter',
+      'aria-label': label,
+      'aria-valuemin': 0,
+      'aria-valuemax': 100,
+      'aria-valuenow': pct ?? null,
+      'aria-valuetext': `${value}${note ? `, ${note}` : ''}`,
+    },
+    h('div', { class: 'gauge-head' }, h('span', { class: 'gauge-label' }, label), h('span', { class: 'gauge-value' }, value)),
+    h('div', { class: 'gauge-track' }, h('div', { class: 'gauge-fill', style: `width: ${pct ?? 0}%` })),
+    note ? h('div', { class: 'gauge-note' }, note) : '',
+  );
+}
+
+/** 5-hour and weekly limits on the subscription, and how full the conversation's context is. */
+export function renderGauges(p: Proj | undefined): void {
+  const host = $('gauges');
+  const rows: HTMLElement[] = [];
+  if (p && !isLocal(p)) {
+    for (const [which, label] of [['five_hour', '5-hour limit'], ['seven_day', 'Weekly limit']] as const) {
+      const g = windowGauge(which);
+      if (g) rows.push(gauge(label, g.used, `${Math.round(g.used * 100)}%`, resets(g.resetsAt)));
+    }
+  }
+  const c = p?.gauges?.context;
+  if (p && c) {
+    const used = c.max ? c.tokens / c.max : undefined;
+    const value = c.max ? `${tokens(c.tokens)} / ${tokens(c.max)}` : `${tokens(c.tokens)} tokens`;
+    const server = providerOf(p).kind === 'ollama' ? 'Ollama' : providerOf(p).kind === 'llamacpp' ? 'llama.cpp' : 'the server';
+    const note = !isLocal(p) ? (used != null && used >= 0.75 ? 'Older messages get summarised as it fills' : '') : c.fromServer ? `Window size from ${server}` : `${server} didn’t say how big its window is`;
+    rows.push(gauge('Context', used, value, note));
+  }
+  host.hidden = !rows.length;
+  host.replaceChildren(...rows);
+}
 
 const WINDOW: Record<string, string> = {
   five_hour: '5-hour',

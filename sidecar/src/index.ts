@@ -20,6 +20,7 @@ import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './w
 import { addBug, addQuestion, addTask } from './capture.js';
 import { UsageLedger } from './usage.js';
 import { GitMonitor } from './git.js';
+import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
 import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
@@ -57,7 +58,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'git', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -82,6 +83,13 @@ const projects = new Map<string, Project>();
 const FAKE_AGENT = process.env.SLOP_FACTORY_FAKE_AGENT === '1';
 type Session = AgentSession | FakeSession;
 /** A session that remembers its conversation id, so the project can pick it up after a restart. */
+/** A local provider with the context window its server gives the model, for the agent to work within. */
+async function withContext(provider: ProviderConfig): Promise<ProviderConfig> {
+  if (provider.kind === 'subscription') return provider;
+  const contextTokens = await serverContextWindow(provider).catch(() => undefined);
+  return contextTokens ? { ...provider, contextTokens } : provider;
+}
+
 function newSession(dir: string, mode: PermissionModeName, out: (e: ProjectEvent) => void, provider: ProviderConfig, resume?: string): Session {
   const s = FAKE_AGENT ? new FakeSession(dir, mode, out, provider, resume) : new AgentSession(dir, mode, out, provider, resume);
   s.onSession = (id) => void providers.setSession(dir, id).catch(() => undefined);
@@ -155,7 +163,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const out = projectEmitter(shell);
 
   const [config, prompts, framework] = await Promise.all([loadTaskConfig(dir), loadPrompts(dir), scanFramework(dir)]);
-  const provider = providers.forProject(dir);
+  const provider = await withContext(providers.forProject(dir));
   const projectEvent: ProjectEvent = { type: 'project', dir, name: path.basename(dir), framework, taskGlobs: config.taskGlobs, permissionMode: mode, providerId: provider.id };
   out(projectEvent);
   const { problem } = await loadProjectSettings(dir);
@@ -206,12 +214,13 @@ async function closeProject(dir: string): Promise<void> {
 }
 
 /** Restart a project's agent: so it picks up changed MCP servers (same conversation), or to start afresh. */
-function restartSession(p: Project, fresh: boolean): void {
+async function restartSession(p: Project, fresh: boolean): Promise<void> {
   const mode = p.session.mode;
+  const provider = await withContext(p.session.provider);
   p.session.close();
   const resume = fresh ? undefined : providers.sessionFor(p.dir);
   if (fresh) void providers.setSession(p.dir, undefined);
-  p.session = newSession(p.dir, mode, p.out, p.session.provider, resume);
+  p.session = newSession(p.dir, mode, p.out, provider, resume);
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
@@ -220,7 +229,7 @@ function restartSession(p: Project, fresh: boolean): void {
 
 /** Restart a project's Claude Code session on another provider. The task board keeps running. */
 async function switchProvider(p: Project, providerId: string): Promise<void> {
-  const provider = await providers.setForProject(p.dir, providerId);
+  const provider = await withContext(await providers.setForProject(p.dir, providerId));
   const mode = p.session.mode;
   p.session.close();
   await providers.setSession(p.dir, undefined);

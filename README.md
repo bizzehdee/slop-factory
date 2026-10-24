@@ -207,10 +207,14 @@ installed), shows the plan, copies the path or closes the project.
 
 ## Usage
 
-The Session panel shows what the project has used today and in all, and **Details** breaks it down:
-cost, tokens, turns and time, the last 14 days, and each model. On a local model it counts tokens
-only. While you're on your subscription it also shows how much of your current usage limit is
-used and when it resets, highlighted as you get close.
+The Session panel opens with gauges: on your subscription, how much of the **5-hour** and **weekly**
+limits you've used and when each resets, and how full the conversation's **context** is. On a
+local model only the context applies, and its size comes from the server itself (llama.cpp or
+Ollama), which the agent is told too, so it summarises older messages before the server runs out of
+room.
+
+Below them, the project's usage today and in all, with **Details**: cost, tokens, turns and time,
+the last 14 days, and each model. On a local model it counts tokens only.
 
 ![A project's usage: totals, the last 14 days, and tokens by kind and model](docs/screenshots/usage.png)
 
