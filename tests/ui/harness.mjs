@@ -26,7 +26,9 @@ async function waitForHttp(url, ms) {
 /** Bridge + Vite + browser, shared by every test in a file. */
 export async function startApp() {
   const work = await mkdtemp(path.join(tmpdir(), 'slop-ui-'));
-  const env = { ...process.env, SLOP_FACTORY_FAKE_AGENT: '1', SLOP_FACTORY_CONFIG_DIR: path.join(work, 'config') };
+  // A git identity, as most people have, so merges can make their commit on a bare CI runner too.
+  const identity = { GIT_AUTHOR_NAME: 'Test', GIT_AUTHOR_EMAIL: 'test@example.com', GIT_COMMITTER_NAME: 'Test', GIT_COMMITTER_EMAIL: 'test@example.com' };
+  const env = { ...identity, ...process.env, SLOP_FACTORY_FAKE_AGENT: '1', SLOP_FACTORY_CONFIG_DIR: path.join(work, 'config') };
   const bridge = () => spawn(process.execPath, [path.join(root, 'scripts', 'dev-bridge.mjs')], { cwd: root, env, stdio: ['ignore', 'ignore', 'inherit'] });
   const procs = [bridge(), spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', '1420', '--strictPort'], { cwd: root, env, stdio: 'ignore' })];
   await waitForHttp(URL_BASE, 30_000);

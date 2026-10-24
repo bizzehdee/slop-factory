@@ -602,6 +602,9 @@ test('worktrees: list a subagent branch, diff it, merge it, refuse a conflicting
   const { execFileSync } = await import('node:child_process');
   const root = await mkdtemp(path.join(tmpdir(), 'desk-wt-'));
   const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' });
+  // Merging makes a commit, so the app's git needs an identity, as it has on most machines.
+  const saved = { ...process.env };
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' });
   try {
     g(root, 'init', '-q', '-b', 'main');
     await writeFile(path.join(root, 'a.txt'), 'one\n');
@@ -631,7 +634,7 @@ test('worktrees: list a subagent branch, diff it, merge it, refuse a conflicting
     g(root, 'worktree', 'add', '-q', '-b', 'agent-2', wt2, 'HEAD~1');
     await writeFile(path.join(wt2, 'a.txt'), 'other\n');
     g(wt2, 'commit', '-qam', 'other');
-    await assert.rejects(mergeWorktree(root, wt2), /doesn't merge cleanly into main, so nothing was changed/);
+    await assert.rejects(mergeWorktree(root, wt2), /doesn't merge cleanly into main \(conflicts in a\.txt\), so nothing was changed/);
     assert.equal(g(root, 'status', '--porcelain', '--untracked-files=no'), '');
     assert.equal(await readFile(path.join(root, 'a.txt'), 'utf8'), 'one\ntwo\n');
 
@@ -639,6 +642,36 @@ test('worktrees: list a subagent branch, diff it, merge it, refuse a conflicting
     assert.deepEqual((await listWorktrees(root)).map((w) => w.branch), ['agent-1']);
     assert.doesNotMatch(g(root, 'branch'), /agent-2/);
   } finally {
+    process.env = saved;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('merging without a git identity says how to set one, rather than blaming a conflict', async () => {
+  const { mergeWorktree } = await import('../dist/worktrees.js');
+  const { execFileSync } = await import('node:child_process');
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-ident-'));
+  const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' });
+  const saved = { ...process.env };
+  try {
+    g(root, 'init', '-q', '-b', 'main');
+    await writeFile(path.join(root, 'a.txt'), 'one\n');
+    g(root, 'add', '.');
+    g(root, 'commit', '-qm', 'start');
+    const wt = path.join(root, '.claude', 'worktrees', 'agent-1');
+    g(root, 'worktree', 'add', '-q', '-b', 'agent-1', wt);
+    await writeFile(path.join(wt, 'b.txt'), 'two\n');
+    g(wt, 'add', '.');
+    g(wt, 'commit', '-qm', 'Add b');
+    // No name or email anywhere, and git told not to guess one: as on a fresh install.
+    const config = path.join(root, 'empty-gitconfig');
+    await writeFile(config, '[user]\n\tuseConfigOnly = true\n');
+    for (const k of ['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_EMAIL', 'EMAIL']) delete process.env[k];
+    Object.assign(process.env, { GIT_CONFIG_GLOBAL: config, GIT_CONFIG_NOSYSTEM: '1' });
+    await assert.rejects(mergeWorktree(root, wt), /git doesn’t know your name and email yet/);
+    assert.equal(g(root, 'status', '--porcelain', '--untracked-files=no').trim(), '', 'the failed merge left nothing behind');
+  } finally {
+    process.env = saved;
     await rm(root, { recursive: true, force: true });
   }
 });

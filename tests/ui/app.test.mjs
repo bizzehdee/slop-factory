@@ -312,6 +312,7 @@ test("a turn's changes are listed, can be reviewed, and can be undone", async ()
 test('a task, a bug and an open question can be added from the board', async () => {
   const dir = await app.project();
   const page = await app.open(dir);
+  await page.waitForSelector('.phase.current'); // the phases the dialog offers have loaded
   const capture = async (item, fill) => {
     await page.click('#capture');
     await page.click(`#menu .menu-item:has-text("${item}")`);

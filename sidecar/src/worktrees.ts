@@ -89,8 +89,17 @@ export async function mergeWorktree(root: string, wtPath: string): Promise<strin
   try {
     await git(root, ['merge', '--no-ff', '--no-edit', wt.branch]);
   } catch (err) {
+    const why = err instanceof Error ? err.message : String(err);
+    const conflicted = (await git(root, ['diff', '--name-only', '--diff-filter=U']).catch(() => '')).trim().split('\n').filter(Boolean);
     await git(root, ['merge', '--abort']).catch(() => undefined);
-    throw new Error(`${wt.branch} doesn't merge cleanly into ${wt.base}, so nothing was changed. (${err instanceof Error ? err.message : String(err)})`);
+    if (conflicted.length) {
+      throw new Error(`${wt.branch} doesn't merge cleanly into ${wt.base} (conflicts in ${conflicted.slice(0, 5).join(', ')}${conflicted.length > 5 ? ', …' : ''}), so nothing was changed. Ask the agent to merge it.`);
+    }
+    // A merge commit needs an author; a fresh git install doesn't have one yet.
+    if (/tell me who you are|set the identity|empty ident|no (email|name) was given|unable to auto-detect/i.test(why)) {
+      throw new Error('git doesn’t know your name and email yet, so it can’t make the merge commit. Set them with git config --global user.name "Your Name" and git config --global user.email you@example.com, then merge again.');
+    }
+    throw new Error(`Couldn't merge ${wt.branch} into ${wt.base}, so nothing was changed: ${why}`);
   }
   return `Merged ${wt.branch} into ${wt.base} (${wt.ahead} commit${wt.ahead === 1 ? '' : 's'}).`;
 }

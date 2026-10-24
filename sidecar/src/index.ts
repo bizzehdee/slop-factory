@@ -28,6 +28,11 @@ fixPath();
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
 const writeOut = process.stdout.write.bind(process.stdout);
+// The window has gone (closed, or the app is quitting): there's no one left to talk to.
+process.stdout.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code === 'EPIPE') process.exit(0);
+  throw err;
+});
 console.log = (...a: unknown[]) => process.stderr.write(a.map(String).join(' ') + '\n');
 console.info = console.log;
 
