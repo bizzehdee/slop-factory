@@ -5,14 +5,58 @@
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 
 #[derive(Default)]
 struct Sidecar {
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
+}
+
+/// Closing the window or quitting asks the window first, which warns when work is still running.
+#[derive(Default)]
+struct Quit {
+    allowed: AtomicBool,          // the window said yes (or nothing was running)
+    asked: Mutex<Option<Instant>>, // a question sent that the window hasn't acknowledged
+}
+
+/// How long a frozen window gets to acknowledge before closing again goes straight through.
+const UNANSWERED: Duration = Duration::from_secs(2);
+
+/// Hold the close or quit and ask the window. True when it should go ahead instead: allowed already,
+/// or the last question went unacknowledged (the window has hung), so the app can always be closed.
+fn hold_for_window(app: &AppHandle) -> bool {
+    let quit = app.state::<Quit>();
+    if quit.allowed.load(Ordering::SeqCst) {
+        return true;
+    }
+    let mut asked = quit.asked.lock().unwrap();
+    if let Some(at) = *asked {
+        if at.elapsed() > UNANSWERED {
+            quit.allowed.store(true, Ordering::SeqCst);
+            return true;
+        }
+    }
+    *asked = Some(Instant::now());
+    let _ = app.emit("app://quit-requested", ());
+    false
+}
+
+/// The window has the question and is deciding; it isn't hung.
+#[tauri::command]
+fn quit_ack(quit: State<'_, Quit>) {
+    *quit.asked.lock().unwrap() = None;
+}
+
+/// Quit after all: nothing was running, or you said so.
+#[tauri::command]
+fn quit_confirmed(app: AppHandle, quit: State<'_, Quit>) {
+    quit.allowed.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 /// Where the sidecar's compiled entry point lives.
@@ -127,11 +171,25 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .manage(Sidecar::default())
-        .invoke_handler(tauri::generate_handler![sidecar_start, sidecar_send])
+        .manage(Quit::default())
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                if !hold_for_window(window.app_handle()) {
+                    api.prevent_close();
+                }
+            }
+        })
+        .invoke_handler(tauri::generate_handler![sidecar_start, sidecar_send, quit_ack, quit_confirmed])
         .build(tauri::generate_context!())
         .expect("error while building Slop Factory");
 
     app.run(|handle, event| {
+        // Quitting from the menu or the keyboard (Cmd+Q) asks the window too; app.exit() has a code.
+        if let RunEvent::ExitRequested { api, code: None, .. } = &event {
+            if !hold_for_window(handle) {
+                api.prevent_exit();
+            }
+        }
         if let RunEvent::Exit = event {
             let state = handle.state::<Sidecar>();
             // Closing stdin lets the sidecar shut Claude Code down cleanly; kill as a fallback.

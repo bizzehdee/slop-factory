@@ -745,3 +745,38 @@ test('the theme, notifications and where new projects go are remembered by the a
   await page.waitForTimeout(300);
   assert.deepEqual(page.errors, []);
 });
+
+test('quitting while work runs asks first and stays open on no; with nothing running it just quits', async () => {
+  const page = await app.open(await app.project());
+  const askToQuit = () => page.evaluate(() => window.dispatchEvent(new Event('slop:quit-requested')));
+  const quit = () => page.evaluate(() => !!window.__quit);
+  // One handler for every question: it notes what was asked and answers as the step says.
+  const asked = [];
+  let answer = 'dismiss';
+  page.on('dialog', (d) => {
+    asked.push(d.message());
+    void (answer === 'accept' ? d.accept() : d.dismiss());
+  });
+
+  // Nothing running: no question.
+  await askToQuit();
+  await page.waitForFunction(() => window.__quit === true);
+  assert.equal(asked.length, 0);
+  await page.evaluate(() => delete window.__quit);
+
+  // A turn with a subagent under way: it asks, saying what would stop.
+  await page.fill('#prompt', 'Start a slow subagent');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#processes button:has-text("View")');
+  await askToQuit();
+  await page.waitForFunction(() => true);
+  await page.waitForTimeout(200);
+  assert.equal(asked.length, 1);
+  assert.match(asked[0], /Still running:/);
+  assert.match(asked[0], /the agent is working on a turn, 1 subagent/);
+  assert.equal(await quit(), false, 'no: the app stays open');
+  answer = 'accept';
+  await askToQuit();
+  await page.waitForFunction(() => window.__quit === true);
+  assert.deepEqual(page.errors, []);
+});

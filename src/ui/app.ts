@@ -43,11 +43,32 @@ export function submit(): void {
   renderComposer();
 }
 
+const LIVE = ['running', 'pending'];
+const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** What quitting would stop, project by project: turns under way, shell tasks, subagents. */
+export function runningWork(): string[] {
+  const out: string[] = [];
+  for (const p of projects.values()) {
+    const live = p.processes.filter((x) => LIVE.includes(x.status));
+    const shells = live.filter((x) => x.kind === 'shell' || x.kind === 'monitor').length;
+    const agents = live.filter((x) => x.kind === 'subagent' || x.kind === 'workflow').length;
+    const parts = [p.busy ? 'the agent is working on a turn' : '', shells ? count(shells, 'shell task', 'shell tasks') : '', agents ? count(agents, 'subagent', 'subagents') : ''].filter(Boolean);
+    if (parts.length) out.push(`${p.name}: ${parts.join(', ')}`);
+  }
+  return out;
+}
+
 export async function init(): Promise<void> {
   document.querySelectorAll('.app-version').forEach((el) => (el.textContent = `v${__APP_VERSION__}`));
   renderAll();
   const b = setBridge(await createBridge());
   b.onEvent(onEvent);
+  b.onQuitRequested(() => {
+    const work = runningWork();
+    // Quitting stops the agents and everything they started, so check first when anything runs.
+    if (!work.length || confirm(`Still running:\n\n${work.map((w) => `• ${w}`).join('\n')}\n\nQuit anyway? All of it will be stopped.`)) void b.quit();
+  });
   send({ type: 'getPrefs' });
   send({ type: 'listEditors' });
   send({ type: 'checkAuth' });

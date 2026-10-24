@@ -9,6 +9,9 @@ export interface Bridge {
   onEvent(fn: Listener): void;
   pickFolder(): Promise<string | null>;
   notify(title: string, body: string): Promise<void>;
+  /** Closing the window or quitting was asked for; quit() goes ahead, doing nothing keeps the app open. */
+  onQuitRequested(fn: () => void): void;
+  quit(): Promise<void>;
   readonly mode: 'tauri' | 'browser';
 }
 
@@ -28,9 +31,17 @@ async function tauriBridge(): Promise<Bridge> {
       /* ignore non-JSON lines */
     }
   });
+  const quitListeners: (() => void)[] = [];
+  await listen('app://quit-requested', () => {
+    void invoke('quit_ack');
+    if (!quitListeners.length) return void invoke('quit_confirmed');
+    quitListeners.forEach((fn) => fn());
+  });
   await invoke('sidecar_start');
   return {
     mode: 'tauri',
+    onQuitRequested: (fn) => quitListeners.push(fn),
+    quit: () => invoke('quit_confirmed'),
     send: (cmd) => void invoke('sidecar_send', { line: JSON.stringify(cmd) }),
     onEvent: (fn) => listeners.push(fn),
     pickFolder: async () => {
@@ -64,8 +75,16 @@ function browserBridge(): Bridge {
   };
   connect();
 
+  // A browser tab can't hold its own closing, so a quit is only ever asked for by the tests,
+  // through a slop:quit-requested event; going ahead is recorded rather than closing anything.
+  const quitListeners: (() => void)[] = [];
+  window.addEventListener('slop:quit-requested', () => quitListeners.forEach((fn) => fn()));
   return {
     mode: 'browser',
+    onQuitRequested: (fn) => quitListeners.push(fn),
+    quit: async () => {
+      (window as { __quit?: boolean }).__quit = true;
+    },
     send: (cmd) => {
       const line = JSON.stringify(cmd);
       if (ws?.readyState === WebSocket.OPEN) ws.send(line);
