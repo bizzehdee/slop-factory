@@ -11,6 +11,7 @@ import { startQueued, trackLane } from './queue';
 import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
+import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 
 // ---------- events ----------
 
@@ -87,6 +88,7 @@ export function onEvent(e: SidecarEvent): void {
   switch (e.type) {
     case 'replayDone':
       p.replaying = false;
+      refreshWorktrees(p);
       p.transcript.scrollTop = p.transcript.scrollHeight;
       break;
     case 'closed':
@@ -154,13 +156,32 @@ export function onEvent(e: SidecarEvent): void {
       return markAnswered(p, e.id, 'Cancelled');
     case 'turnEnd':
       p.lastTurn = e;
+      if (!p.replaying) refreshWorktrees(p);
       if (e.stopped) notice(p, 'info', 'Stopped.');
       else if (e.isError) notice(p, 'error', e.errors?.length ? e.errors.join('\n') : 'The turn ended with an error.');
       break;
-    case 'processes':
+    case 'processes': {
+      // A subagent that just finished may have left a worktree to review.
+      const live = (list: typeof e.list) => list.filter((x) => x.kind === 'subagent' && ['running', 'pending'].includes(x.status)).length;
+      const ended = live(e.list) < live(p.processes);
       p.processes = e.list;
       trackLane(p);
+      if (ended && !p.replaying) refreshWorktrees(p);
       break;
+    }
+    case 'worktrees':
+      p.worktrees = e.list;
+      if (isActive) {
+        renderWorktrees();
+        if (docsView?.worktree) renderWorktreeView(p);
+      }
+      return;
+    case 'worktreeDiff':
+      if (docsView?.worktree === e.path && docsView.requestId === e.requestId) {
+        docsView.diff = e.diff;
+        renderWorktreeView(p);
+      }
+      return;
     case 'tasks':
       p.tasks = e.files;
       p.docs = new Set(e.docs);

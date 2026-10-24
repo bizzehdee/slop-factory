@@ -596,3 +596,49 @@ test('enqueue puts a phase\'s tasks at the front or back, in their lane, and rem
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('worktrees: list a subagent branch, diff it, merge it, refuse a conflicting merge, discard', async () => {
+  const { listWorktrees, worktreeDiff, mergeWorktree, discardWorktree } = await import('../dist/worktrees.js');
+  const { execFileSync } = await import('node:child_process');
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-wt-'));
+  const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' });
+  try {
+    g(root, 'init', '-q', '-b', 'main');
+    await writeFile(path.join(root, 'a.txt'), 'one\n');
+    g(root, 'add', '.');
+    g(root, 'commit', '-qm', 'start');
+    assert.deepEqual(await listWorktrees(root), []);
+
+    const wt = path.join(root, '.claude', 'worktrees', 'agent-1');
+    g(root, 'worktree', 'add', '-q', '-b', 'agent-1', wt);
+    await writeFile(path.join(wt, 'a.txt'), 'one\ntwo\n');
+    g(wt, 'commit', '-qam', 'two');
+    await writeFile(path.join(wt, 'b.txt'), 'draft\n');
+
+    const [info] = await listWorktrees(root);
+    assert.deepEqual({ branch: info.branch, base: info.base, ahead: info.ahead, files: info.files, uncommitted: info.uncommitted, agent: info.agent }, {
+      branch: 'agent-1', base: 'main', ahead: 1, files: ['a.txt'], uncommitted: 1, agent: true,
+    });
+    const diff = await worktreeDiff(root, wt);
+    assert.match(diff, /\+two/);
+    assert.match(diff, /new file, not committed: b\.txt/);
+
+    assert.match(await mergeWorktree(root, wt), /Merged agent-1 into main \(1 commit\)/);
+    assert.equal(await readFile(path.join(root, 'a.txt'), 'utf8'), 'one\ntwo\n');
+
+    // A branch that conflicts with main leaves main as it was.
+    const wt2 = path.join(root, '.claude', 'worktrees', 'agent-2');
+    g(root, 'worktree', 'add', '-q', '-b', 'agent-2', wt2, 'HEAD~1');
+    await writeFile(path.join(wt2, 'a.txt'), 'other\n');
+    g(wt2, 'commit', '-qam', 'other');
+    await assert.rejects(mergeWorktree(root, wt2), /doesn't merge cleanly into main, so nothing was changed/);
+    assert.equal(g(root, 'status', '--porcelain', '--untracked-files=no'), '');
+    assert.equal(await readFile(path.join(root, 'a.txt'), 'utf8'), 'one\ntwo\n');
+
+    assert.match(await discardWorktree(root, wt2), /Discarded agent-2/);
+    assert.deepEqual((await listWorktrees(root)).map((w) => w.branch), ['agent-1']);
+    assert.doesNotMatch(g(root, 'branch'), /agent-2/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

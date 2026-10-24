@@ -15,6 +15,7 @@ import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
+import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
 import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
 
@@ -38,7 +39,7 @@ if (process.env.ANTHROPIC_API_KEY && process.env.SLOP_FACTORY_ALLOW_API_KEY !== 
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'busy', 'processes', 'tasks', 'priorities']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -233,6 +234,25 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'restartSession':
       return restartSession(need(cmd.project));
+    case 'listWorktrees': {
+      const p = need(cmd.project);
+      return p.out({ type: 'worktrees', list: await listWorktrees(p.dir) });
+    }
+    case 'worktreeDiff': {
+      const p = need(cmd.project);
+      return p.out({ type: 'worktreeDiff', path: cmd.path, requestId: cmd.requestId, diff: await worktreeDiff(p.dir, cmd.path) });
+    }
+    case 'mergeWorktree':
+    case 'discardWorktree': {
+      const p = need(cmd.project);
+      try {
+        const done = cmd.type === 'mergeWorktree' ? await mergeWorktree(p.dir, cmd.path) : await discardWorktree(p.dir, cmd.path);
+        p.out({ type: 'notice', level: 'info', text: done });
+      } finally {
+        p.out({ type: 'worktrees', list: await listWorktrees(p.dir) });
+      }
+      return;
+    }
     case 'openUrl':
       if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
       return openInFileManager(cmd.url);

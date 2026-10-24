@@ -8,6 +8,7 @@ import { newProjectDialog } from './newproject';
 import { renderQuestions } from './questions';
 import { openSettings } from './settings';
 import { Proj, active, editorList, load, projects, providerList, providerOf, send, setActive, store } from './state';
+import { refreshWorktrees, renderWorktrees } from './worktrees';
 
 // ---------- projects list ----------
 
@@ -268,6 +269,7 @@ export function renderAll(): void {
   renderTasks();
   renderQuestions();
   renderProcesses();
+  renderWorktrees();
   renderSession();
   renderComposer();
   renderWelcome();
@@ -284,6 +286,7 @@ export function activate(p: Proj | undefined): void {
     store('slop-factory:active', p.dir);
     requestAnimationFrame(() => (p.transcript.scrollTop = p.transcript.scrollHeight));
     if (docsView && docsView.project !== p.dir) closeDocs();
+    refreshWorktrees(p);
   } else {
     prompt.value = '';
     closeDocs();

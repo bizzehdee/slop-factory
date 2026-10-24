@@ -151,3 +151,35 @@ test('a new project gets its folder and git repository, then opens', async () =>
   await page.waitForSelector('#project-name:has-text("fresh-start")');
   await stat(path.join(app.work, 'fresh-start', '.git'));
 });
+
+test("a subagent's worktree can be reviewed, merged or discarded", async () => {
+  const { execFileSync } = await import('node:child_process');
+  const dir = await app.project({ 'src/app.js': 'export const answer = 41;\n' });
+  const g = (cwd, ...args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8' });
+  g(dir, 'init', '-q', '-b', 'main');
+  await writeFile(path.join(dir, '.gitignore'), '.claude/\n.slop-factory/\n');
+  g(dir, 'add', '.');
+  g(dir, 'commit', '-qm', 'start');
+  const one = path.join(dir, '.claude', 'worktrees', 'agent-fix');
+  const two = path.join(dir, '.claude', 'worktrees', 'agent-spike');
+  g(dir, 'worktree', 'add', '-q', '-b', 'agent-fix', one);
+  g(dir, 'worktree', 'add', '-q', '-b', 'agent-spike', two);
+  await writeFile(path.join(one, 'src/app.js'), 'export const answer = 42;\n');
+  g(one, 'commit', '-qam', 'Fix the answer');
+  await writeFile(path.join(one, 'notes.md'), 'draft\n');
+
+  const page = await app.open(dir);
+  page.on('dialog', (d) => d.accept());
+  await page.waitForSelector('.worktree:has-text("agent-fix")');
+  assert.match(await page.textContent('.worktree:has-text("agent-fix") .worktree-meta'), /1 commit · 1 file · 1 not committed/);
+  await page.click('.worktree:has-text("agent-fix") .worktree-main');
+  await page.waitForSelector('.diff-lines .add:has-text("answer = 42")');
+  assert.ok(await page.locator('.diff-file summary:has-text("notes.md")').count());
+  await page.click('#docs-actions button:has-text("Merge into main")');
+  await page.waitForSelector('.notice:has-text("Merged agent-fix into main")');
+  assert.equal(await readFile(path.join(dir, 'src/app.js'), 'utf8'), 'export const answer = 42;\n');
+
+  await page.click('.worktree:has-text("agent-spike") button:has-text("Discard")');
+  await page.waitForSelector('.notice:has-text("Discarded agent-spike")');
+  await page.waitForFunction(() => !document.querySelector('.worktree')?.textContent?.includes('agent-spike'));
+});

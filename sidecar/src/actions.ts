@@ -37,8 +37,8 @@ export const DEFAULT_PROMPTS: Record<string, string> = {
   whereSubagent:
     'Run it in a background subagent with worktree isolation (the Agent tool with isolation: ' +
     '"worktree"), so it works on its own copy of the repository in parallel with anything else ' +
-    'going on here. When it finishes, tell me its branch and what changed so I can review and ' +
-    'merge it.',
+    'going on here. Have it commit its work on its branch and leave the worktree in place, so I can ' +
+    'review and merge it from Slop Factory. When it finishes, tell me its branch and what changed.',
   reinvestigate:
     'Re-investigate {ref} ({title}) from {file}.\n\n' +
     'Run it in a background subagent. Read {docs}, check the code still does what that work ' +

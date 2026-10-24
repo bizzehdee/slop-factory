@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AskedQuestion, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand } from '../../sidecar/src/protocol';
+import type { AskedQuestion, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 
@@ -41,6 +41,7 @@ export interface Proj {
   holdQueue: boolean; // set by Stop: the queue waits until you start something again
   subagentLane: Set<string>; // queued keys that start in a background subagent
   laneRun?: LaneRun; // the subagent-lane item running now
+  worktrees: WorktreeInfo[];
 }
 
 /** A subagent-lane item that was started: which background subagent it became, once that shows up. */
@@ -115,5 +116,6 @@ export function newProject(dir: string, name: string): Proj {
     replaying: false,
     holdQueue: false,
     subagentLane: new Set(),
+    worktrees: [],
   };
 }

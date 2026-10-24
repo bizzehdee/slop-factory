@@ -55,6 +55,10 @@ export type UiCommand =
   | { type: 'saveMcp'; project?: string; server: McpEntry; previous?: { name: string; scope: McpScope } }
   | { type: 'removeMcp'; project?: string; name: string; scope: McpScope }
   | { type: 'restartSession'; project: string }
+  | { type: 'listWorktrees'; project: string }
+  | { type: 'worktreeDiff'; project: string; path: string; requestId: string }
+  | { type: 'mergeWorktree'; project: string; path: string }
+  | { type: 'discardWorktree'; project: string; path: string }
   | { type: 'send'; project: string; text: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
@@ -72,6 +76,17 @@ export type UiCommand =
   | { type: 'deleteProvider'; id: string }
   | { type: 'probeProvider'; requestId: string; baseUrl: string; authToken?: string }
   | { type: 'createProject'; requestId: string; request: NewProjectRequest };
+
+/** A git worktree of the project other than its main checkout, usually a subagent's. */
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  base: string; // the project's checked-out branch, compared with and merged into
+  ahead: number; // commits on the branch that the base doesn't have
+  files: string[]; // files the branch changed since it left the base
+  uncommitted: number; // files changed in the worktree but not committed
+  agent: boolean; // made by Claude Code, under .claude/worktrees/
+}
 
 /** Where an MCP server is configured: every project, this project for everyone (.mcp.json), or this project for you. */
 export type McpScope = 'user' | 'project' | 'local';
@@ -249,7 +264,9 @@ export type ProjectEvent =
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; stopped?: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
   | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
-  | { type: 'priorities'; order: string[]; subagent?: string[] } // subagent: the keys in the subagent lane
+  | { type: 'priorities'; order: string[]; subagent?: string[] }
+  | { type: 'worktrees'; list: WorktreeInfo[] }
+  | { type: 'worktreeDiff'; path: string; requestId: string; diff: string } // subagent: the keys in the subagent lane
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }
   | { type: 'replayDone' }
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };

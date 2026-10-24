@@ -2294,3 +2294,96 @@ textarea {
 .more.dequeue svg {
   fill: none;
 }
+
+/* ---------- worktrees ---------- */
+
+.worktrees {
+  border-bottom: 1px solid var(--line);
+}
+.worktree {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+.worktree + .worktree {
+  border-top: 1px solid var(--line);
+}
+.worktree-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.worktree-branch {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  overflow-wrap: anywhere;
+}
+.worktree-main:hover .worktree-branch {
+  color: var(--clay);
+}
+.worktree-meta {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.worktree-actions {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+}
+.link-button.danger {
+  color: var(--bug);
+}
+.link-button:disabled {
+  color: var(--faint);
+  cursor: default;
+  text-decoration: none;
+}
+.diff {
+  display: grid;
+  gap: 10px;
+}
+.diff-file {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+}
+.diff-file summary {
+  padding: 6px 10px;
+  background: var(--raised);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.diff-lines {
+  margin: 0;
+  padding: 6px 0;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+.diff-lines span {
+  display: inline-block;
+  min-width: 100%;
+  padding: 0 10px;
+  white-space: pre;
+}
+.diff-lines .add {
+  background: color-mix(in srgb, var(--done) 16%, transparent);
+}
+.diff-lines .del {
+  background: color-mix(in srgb, var(--bug) 14%, transparent);
+}
+.diff-lines .hunk {
+  color: var(--muted);
+}
