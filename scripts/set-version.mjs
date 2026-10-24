@@ -18,9 +18,9 @@ function json(rel, update) {
 }
 function text(rel, pattern, replacement) {
   const before = readFileSync(file(rel), 'utf8');
-  const after = before.replace(pattern, replacement);
-  if (after === before && !before.includes(replacement)) throw new Error(`No version found in ${rel}`);
-  writeFileSync(file(rel), after);
+  // Unchanged text is fine (the version may already be right); a missing version line is not.
+  if (!pattern.test(before)) throw new Error(`No version found in ${rel}`);
+  writeFileSync(file(rel), before.replace(pattern, replacement));
 }
 
 for (const pkg of ['package.json', 'sidecar/package.json']) json(pkg, (d) => (d.version = version));
@@ -32,5 +32,6 @@ for (const lock of ['package-lock.json', 'sidecar/package-lock.json']) {
 }
 json('src-tauri/tauri.conf.json', (d) => (d.version = version));
 text('src-tauri/Cargo.toml', /^version = "[^"]*"/m, `version = "${version}"`);
-text('src-tauri/Cargo.lock', /(name = "slop-factory"\nversion = )"[^"]*"/, `$1"${version}"`);
+// Windows checkouts may have CRLF line endings.
+text('src-tauri/Cargo.lock', /(name = "slop-factory"\r?\nversion = )"[^"]*"/, `$1"${version}"`);
 console.log(`Version set to ${version}`);
