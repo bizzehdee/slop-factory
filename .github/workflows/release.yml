@@ -23,14 +23,22 @@ jobs:
       # A draft until every platform has uploaded, so nobody downloads a half-finished release.
       - id: release
         run: |
-          # Drafts can't be looked up by tag, so find it in the list; the build jobs upload by id.
-          find_release() { gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1; }
-          id=$(find_release)
-          # A re-pushed tag reuses the release an earlier run made.
+          name="Slop Factory ${{ steps.version.outputs.version }}"
+          # Reuse this tag's release if there is one: published, a draft, or a draft left untagged
+          # when the tag was moved (it keeps its name). Drafts can't be fetched by tag, so search
+          # the list.
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+            --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\" or (.draft and .name == \"$name\")) | .id" | head -n 1)
           if [ -z "$id" ]; then
-            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Slop Factory ${{ steps.version.outputs.version }}" --generate-notes
-            id=$(find_release)
+            # The create call returns the id; a list right after creating can miss the new draft.
+            id=$(gh api -X POST "repos/$GITHUB_REPOSITORY/releases" -f tag_name="$GITHUB_REF_NAME" -f name="$name" \
+              -F draft=true -F generate_release_notes=true --jq .id)
           fi
+          if [ -z "$id" ]; then
+            echo "::error::Couldn't find or create a release for $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "Uploading to release $id"
           echo "id=$id" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ github.token }}
