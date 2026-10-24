@@ -1,6 +1,7 @@
 // Fetch the Node.js runtime the installers carry, so people don't have to install Node themselves.
 //   node scripts/fetch-node.mjs x86_64-unknown-linux-gnu
-//   node scripts/fetch-node.mjs universal-apple-darwin      (Apple silicon and Intel in one file)
+//   node scripts/fetch-node.mjs universal-apple-darwin      (Apple silicon and Intel in one file, plus each on its own,
+//                                                             which Tauri's per-architecture builds look for)
 //   node scripts/fetch-node.mjs                             (this machine)
 // Takes the newest release of the major version in .node-version, checks it against Node's
 // published SHA-256 sums, and writes src-tauri/binaries/slop-factory-node-<target>[.exe], where Tauri's
@@ -78,6 +79,12 @@ try {
       const arm = await fetchOne(version, sums, 'aarch64-apple-darwin', work);
       const intel = await fetchOne(version, sums, 'x86_64-apple-darwin', work);
       execFileSync('lipo', ['-create', arm, intel, '-output', dest]);
+      // Tauri builds each architecture on its own before joining them, and each build looks for its own file.
+      for (const [file, triple] of [[arm, 'aarch64-apple-darwin'], [intel, 'x86_64-apple-darwin']]) {
+        const part = path.join(out, `slop-factory-node-${triple}`);
+        copyFileSync(file, part);
+        chmodSync(part, 0o755);
+      }
     } else {
       copyFileSync(await fetchOne(version, sums, triple, work), dest);
     }
