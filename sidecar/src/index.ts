@@ -41,7 +41,7 @@ if (process.env.ANTHROPIC_API_KEY && process.env.SLOP_FACTORY_ALLOW_API_KEY !== 
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -308,7 +308,7 @@ async function handle(cmd: UiCommand): Promise<void> {
       if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
       return openInFileManager(cmd.url);
     case 'send':
-      if (cmd.text.trim()) need(cmd.project).session.send(cmd.text);
+      if (cmd.text.trim() || cmd.attachments?.length) need(cmd.project).session.send(cmd.text, undefined, cmd.attachments);
       return;
     case 'interrupt':
       return need(cmd.project).session.interrupt();

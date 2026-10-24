@@ -661,6 +661,28 @@ test('a stored conversation becomes the events that show it, without Claude Code
   ]);
 });
 
+test('attached files go to the model as blocks and come back as attachments', async () => {
+  const { messageContent } = await import('../dist/attachments.js');
+  const { messagesToEvents } = await import('../dist/history.js');
+  assert.equal(messageContent('Just text'), 'Just text');
+  const content = messageContent('Look at these', [
+    { name: 'shot.png', kind: 'image', mediaType: 'image/png', data: 'AAAA' },
+    { name: 'spec.pdf', kind: 'pdf', mediaType: 'application/pdf', data: 'BBBB' },
+    { name: 'a "b".txt', kind: 'text', mediaType: 'text/plain', data: 'hello' },
+  ]);
+  assert.deepEqual(content, [
+    { type: 'text', text: 'Look at these' },
+    { type: 'image', source: { type: 'base64', media_type: 'image/png', data: 'AAAA' } },
+    { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: 'BBBB' }, title: 'spec.pdf' },
+    { type: 'text', text: '<attached-file name="a _b_.txt">\nhello\n</attached-file>' },
+  ]);
+  // Files alone, with no text, are a message too.
+  assert.deepEqual(messageContent('  ', [{ name: 'x.txt', kind: 'text', mediaType: 'text/plain', data: 'x' }]), [{ type: 'text', text: '<attached-file name="x.txt">\nx\n</attached-file>' }]);
+  assert.deepEqual(messagesToEvents([{ type: 'user', uuid: 'u1', parent_tool_use_id: null, message: { role: 'user', content } }]), [
+    { type: 'user', text: 'Look at these', attachments: ['image', 'spec.pdf', 'a _b_.txt'] },
+  ]);
+});
+
 test('quick capture writes tasks, bugs and questions in the standard formats', async () => {
   const { nextId, insertTask, insertLegacyTask, insertBug, insertQuestion } = await import('../dist/capture.js');
   const date = new Date().toISOString().slice(0, 10);

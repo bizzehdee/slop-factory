@@ -68,7 +68,7 @@ export type UiCommand =
   | { type: 'worktreeDiff'; project: string; path: string; requestId: string }
   | { type: 'mergeWorktree'; project: string; path: string }
   | { type: 'discardWorktree'; project: string; path: string }
-  | { type: 'send'; project: string; text: string }
+  | { type: 'send'; project: string; text: string; attachments?: Attachment[] }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
   | { type: 'permissionReply'; project: string; id: string; decision: 'allow' | 'always' | 'deny'; message?: string }
@@ -91,6 +91,14 @@ export type UiCommand =
   | { type: 'createProject'; requestId: string; request: NewProjectRequest };
 
 /** A git worktree of the project other than its main checkout, usually a subagent's. */
+/** A file added to a message: an image or PDF the agent sees, or a text file's contents. */
+export interface Attachment {
+  name: string;
+  kind: 'image' | 'pdf' | 'text';
+  mediaType: string;
+  data: string; // images and PDFs: base64; text: the file's text
+}
+
 export interface WorktreeInfo {
   path: string;
   branch: string;
@@ -235,6 +243,13 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** A slash command or skill: typing /name in a message runs it. */
+export interface CommandInfo {
+  name: string;
+  description: string;
+  argumentHint?: string;
+}
+
 /** An item under an "Open questions" heading in plan.md, a docs/ document or a phase document. */
 export interface OpenQuestion {
   id: string; // "<rel>#L<line>"
@@ -265,8 +280,9 @@ export type ProjectEvent =
   | { type: 'mode'; mode: PermissionModeName }
   | { type: 'closed' }
   | { type: 'session'; info: SessionInfo }
+  | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers
   | { type: 'busy'; busy: boolean; status?: string | null }
-  | { type: 'user'; text: string; action?: { kind: ItemAction; key: string }; uuid?: string } // uuid: files can be rewound to this point
+  | { type: 'user'; text: string; action?: { kind: ItemAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point
   | { type: 'assistantDelta'; msgId: string; index: number; text: string }
   | { type: 'assistantText'; msgId: string; text: string; parent: string | null; agent?: string } // agent: the subagent (its task id) that said it
   | { type: 'thinking'; msgId: string; text: string }

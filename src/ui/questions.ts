@@ -394,7 +394,7 @@ export function updateQuestionActions(p: Proj): void {
 
 export const ACTION_LABEL: Record<ItemAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise' };
 
-export function userMessage(p: Proj, text: string, action?: { kind: ItemAction; key: string }): void {
+export function userMessage(p: Proj, text: string, action?: { kind: ItemAction; key: string }, attachments: string[] = []): void {
   p.transcript.querySelector('.empty')?.remove();
   if (action) {
     // Board buttons send a prompt on your behalf; show what was sent, folded.
@@ -406,7 +406,8 @@ export function userMessage(p: Proj, text: string, action?: { kind: ItemAction; 
     );
     return appendEntry(p, el);
   }
-  appendEntry(p, h('div', { class: 'msg user' }, text));
+  const files = attachments.length ? h('div', { class: 'msg-attachments' }, ...attachments.map((n) => h('span', { class: 'attachment-chip sent' }, n))) : null;
+  appendEntry(p, h('div', { class: 'msg user' }, text, files));
 }
 
 /** Your own message always brings the conversation to the bottom, wherever you had scrolled. */

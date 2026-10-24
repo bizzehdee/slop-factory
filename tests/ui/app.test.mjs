@@ -355,3 +355,76 @@ test('the queue can be put in a new order by keyboard or by dragging', async () 
   assert.deepEqual(await ids(), ['T4', 'B1', 'T5']);
   assert.deepEqual(JSON.parse(await readFile(path.join(dir, '.slop-factory/priorities.json'), 'utf8')).order, ['T4', 'B1', 'T5']);
 });
+
+test('images and text files can be attached by picking, pasting or dropping them', async () => {
+  const page = await app.open(await app.project());
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+  await page.setInputFiles('#attach-input', [
+    { name: 'screen.png', mimeType: 'image/png', buffer: png },
+    { name: 'notes.md', mimeType: 'text/markdown', buffer: Buffer.from('# Notes\n') },
+  ]);
+  await page.waitForSelector('.attachments .attachment-chip.image img');
+  assert.equal(await page.locator('.attachments .attachment-chip').count(), 2);
+  // A binary file that isn't an image or PDF is refused, with the reason.
+  await page.setInputFiles('#attach-input', [{ name: 'tool.bin', mimeType: 'application/octet-stream', buffer: Buffer.from([0, 1, 2, 0]) }]);
+  await page.waitForSelector('.attachment-error:has-text("tool.bin")');
+  // One can be removed again; a dropped file joins the rest.
+  await page.click('.attachment-chip:has-text("notes.md") button');
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.items.add(new File(['a,b\n1,2\n'], 'data.csv', { type: 'text/csv' }));
+    document.querySelector('#composer').dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+  });
+  await page.waitForSelector('.attachment-chip:has-text("data.csv")');
+  // Files can be sent without any text.
+  assert.equal(await page.isEnabled('#send'), true);
+  await page.click('#send');
+  await page.waitForSelector('.msg.assistant:has-text("I can see screen.png, data.csv.")');
+  assert.equal(await page.locator('.msg.user .attachment-chip').count(), 2);
+  assert.equal(await page.locator('.attachments').isHidden(), true);
+  // The message keeps its attachments after a reload.
+  await page.reload();
+  await page.waitForSelector('.msg.user .attachment-chip:has-text("data.csv")');
+  assert.deepEqual(page.errors, []);
+});
+
+test('typing / offers commands and skills', async () => {
+  const page = await app.open(await app.project());
+  await page.click('#prompt');
+  await page.keyboard.type('/re');
+  await page.waitForSelector('#slash-menu:not([hidden]) .slash-item');
+  assert.match(await page.textContent('#slash-menu .slash-item[aria-selected="true"]'), /\/review/);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#slash-menu', { state: 'hidden' });
+  await page.fill('#prompt', '');
+  await page.keyboard.type('/');
+  await page.waitForSelector('#slash-menu .slash-item:has-text("task-tracking")');
+  await page.keyboard.type('track');
+  await page.keyboard.press('Tab');
+  assert.equal(await page.inputValue('#prompt'), '/task-tracking ');
+  await page.waitForSelector('#slash-menu', { state: 'hidden' });
+});
+
+test('Ctrl+K finds tasks, questions and messages, and goes to them', async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Remember the word pineapple');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("pineapple")');
+  await page.keyboard.press('Control+k');
+  await page.waitForSelector('#palette[open]');
+  await page.keyboard.type('t5 report');
+  await page.waitForSelector('.palette-item[aria-selected="true"]:has-text("T5")');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#palette', { state: 'hidden' });
+  await page.waitForSelector('.task.flash:has-text("Report")');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('pineapple');
+  await page.waitForSelector('.palette-item:has-text("pineapple")');
+  await page.locator('.palette-item', { hasText: 'You said' }).click();
+  await page.waitForSelector('.msg.user.flash:has-text("pineapple")');
+  await page.click('#open-palette');
+  await page.keyboard.type('settings');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#settings-dialog[open]');
+  assert.deepEqual(page.errors, []);
+});

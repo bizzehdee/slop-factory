@@ -10,6 +10,7 @@ import { openSettings } from './settings';
 import { Proj, active, editorList, load, projects, providerList, providerOf, send, setActive, store } from './state';
 import { refreshWorktrees, renderWorktrees } from './worktrees';
 import { openSubagent } from './subagents';
+import { renderAttachments, renderSlashMenu } from './composer';
 
 // ---------- projects list ----------
 
@@ -212,8 +213,11 @@ export let spinnerTimer: number | undefined;
 export function renderComposer(): void {
   const p = active;
   const prompt = $<HTMLTextAreaElement>('prompt');
-  const hasText = prompt.value.trim().length > 0;
+  const hasText = prompt.value.trim().length > 0 || !!p?.attachments.length;
   prompt.disabled = !p;
+  $<HTMLButtonElement>('attach').disabled = !p;
+  renderAttachments();
+  renderSlashMenu();
   prompt.placeholder = p ? `Message the agent about ${p.name}` : 'Open a project to start';
   const mode = $<HTMLSelectElement>('permission-mode');
   mode.disabled = !p;

@@ -11,6 +11,8 @@ import { wireProviderDialog } from './providers';
 import { wireSettings } from './settings';
 import { active, bridge, load, projects, send, setBridge } from './state';
 import { wireCapture } from './capture';
+import { slashKey, takeAttachments, wireComposer } from './composer';
+import { openPalette, wirePalette } from './palette';
 
 export function addProjectMenu(): MenuItem[] {
   return [
@@ -32,8 +34,9 @@ export async function openProject(dir?: string | null): Promise<void> {
 export function submit(): void {
   const prompt = $<HTMLTextAreaElement>('prompt');
   const text = prompt.value.trim();
-  if (!text || !active) return;
-  send({ type: 'send', project: active.dir, text });
+  if (!active || (!text && !active.attachments.length)) return;
+  const attachments = takeAttachments(active);
+  send({ type: 'send', project: active.dir, text, ...(attachments.length ? { attachments } : {}) });
   prompt.value = '';
   active.draft = '';
   renderComposer();
@@ -57,12 +60,16 @@ export async function init(): Promise<void> {
   wireLoginDialog();
   wireSettings();
   wireCapture();
+  wireComposer();
+  wirePalette();
+  $('open-palette').addEventListener('click', openPalette);
   $('composer').addEventListener('submit', (ev) => {
     ev.preventDefault();
     submit();
   });
   $('prompt').addEventListener('input', renderComposer);
   $('prompt').addEventListener('keydown', (ev) => {
+    if (slashKey(ev)) return;
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
       ev.preventDefault();
       submit();
@@ -89,7 +96,7 @@ export async function init(): Promise<void> {
   wireProviderDialog();
 
   document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape' && !$('docs-panel').hidden && menuEl.hidden) closeDocs();
+    if (ev.key === 'Escape' && !$('docs-panel').hidden && menuEl.hidden && !document.querySelector('dialog[open]')) closeDocs();
     const mod = ev.ctrlKey || ev.metaKey;
     if (mod && /^[1-9]$/.test(ev.key)) {
       const p = [...projects.values()][Number(ev.key) - 1];
@@ -97,6 +104,10 @@ export async function init(): Promise<void> {
         ev.preventDefault();
         activate(p);
       }
+    }
+    if (mod && ev.key.toLowerCase() === 'k') {
+      ev.preventDefault();
+      openPalette();
     }
     if (mod && ev.key.toLowerCase() === 'o') {
       ev.preventDefault();

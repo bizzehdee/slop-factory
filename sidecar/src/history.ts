@@ -1,5 +1,6 @@
 import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
 import type { ProjectEvent } from './protocol.js';
+import { ATTACHED_FILE, attachedNames } from './attachments.js';
 
 // A conversation picked up after a restart: Claude Code resumes it from its own transcript, and
 // the window rebuilds what it showed from the same messages.
@@ -11,7 +12,7 @@ interface StoredMessage {
   parent_tool_use_id: string | null;
 }
 
-type Block = { type: string; text?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown; is_error?: boolean };
+type Block = { type: string; text?: string; title?: string; id?: string; name?: string; input?: unknown; tool_use_id?: string; content?: unknown; is_error?: boolean };
 
 // Text Claude Code adds to user turns on its own, not typed by anyone.
 const INTERNAL = /^<(command-|local-command|system-reminder|bash-|user-memory|task-notification)/;
@@ -34,10 +35,15 @@ export function messagesToEvents(messages: StoredMessage[]): ProjectEvent[] {
         if (!parent && content.trim() && !INTERNAL.test(content.trim())) out.push({ type: 'user', text: content });
         continue;
       }
-      for (const b of (Array.isArray(content) ? content : []) as Block[]) {
+      const blocks = (Array.isArray(content) ? content : []) as Block[];
+      for (const b of blocks) {
         if (b.type === 'tool_result' && b.tool_use_id) out.push({ type: 'toolResult', toolUseId: b.tool_use_id, isError: !!b.is_error, preview: preview(b.content) });
-        else if (b.type === 'text' && !parent && b.text?.trim() && !INTERNAL.test(b.text.trim())) out.push({ type: 'user', text: b.text });
       }
+      if (parent) continue;
+      // A message's own text, with the files sent along with it.
+      const text = blocks.filter((b) => b.type === 'text' && b.text?.trim() && !INTERNAL.test(b.text.trim()) && !ATTACHED_FILE.test(b.text)).map((b) => b.text).join('\n\n');
+      const attachments = attachedNames(blocks);
+      if (text || attachments.length) out.push({ type: 'user', text, ...(attachments.length ? { attachments } : {}) });
     } else if (m.type === 'assistant') {
       for (const b of (Array.isArray(content) ? content : []) as Block[]) {
         if (b.type === 'text' && b.text) out.push({ type: 'assistantText', msgId: msg?.id ?? m.uuid, text: b.text, parent });

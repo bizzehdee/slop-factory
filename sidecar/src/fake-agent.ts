@@ -2,8 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { messagesToEvents } from './history.js';
+import { messageContent } from './attachments.js';
 import { configDir } from './names.js';
-import type { AskedQuestion, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 
@@ -73,7 +74,7 @@ export class FakeSession {
     }
   }
 
-  private record(type: 'user' | 'assistant', text: string): void {
+  private record(type: 'user' | 'assistant', text: string | unknown[]): void {
     const dir = path.join(configDir(), 'fake-sessions');
     mkdirSync(dir, { recursive: true });
     const message = type === 'user' ? { role: 'user', content: text } : { role: 'assistant', content: [{ type: 'text', text }] };
@@ -98,6 +99,14 @@ export class FakeSession {
         slashCommands: ['compact', 'review'],
       },
     });
+    this.emit({
+      type: 'commands',
+      commands: [
+        { name: 'compact', description: 'Clear the conversation but keep a summary of it in context' },
+        { name: 'review', description: 'Review a pull request', argumentHint: '<pr>' },
+        { name: 'task-tracking', description: 'Track tasks and bugs in task.md' },
+      ],
+    });
   }
 
   get busy(): boolean {
@@ -108,14 +117,15 @@ export class FakeSession {
     return this.permissionMode;
   }
 
-  send(text: string, action?: { kind: ItemAction; key: string }): void {
+  send(text: string, action?: { kind: ItemAction; key: string }, attachments: Attachment[] = []): void {
     this.pendingTurns++;
     const uuid = randomUUID();
     this.turnIds.push(uuid);
-    this.emit({ type: 'user', text, action, uuid });
+    const names = attachments.map((a) => a.name);
+    this.emit({ type: 'user', text, action, uuid, ...(names.length ? { attachments: names } : {}) });
     this.emit({ type: 'busy', busy: true });
-    this.record('user', text);
-    void this.turn(text, uuid);
+    this.record('user', messageContent(text, attachments));
+    void this.turn(text, uuid, names);
   }
 
   // Checkpoints, as enableFileCheckpointing keeps them: each file's content before a turn first changed it.
@@ -203,7 +213,7 @@ export class FakeSession {
     this.record('assistant', text);
   }
 
-  private async turn(text: string, uuid: string): Promise<void> {
+  private async turn(text: string, uuid: string, attached: string[] = []): Promise<void> {
     let stopped = false;
     const stop = new Promise<void>((resolve) => (this.stopTurn = () => ((stopped = true), resolve())));
     const lower = text.toLowerCase();
@@ -251,6 +261,7 @@ export class FakeSession {
         this.emit({ type: 'toolResult', toolUseId: id, isError: false, preview: 'The file notes.txt has been updated.' });
       }
       if (lower.includes('slow')) await this.sleep(4000);
+      if (attached.length) return this.reply(`I can see ${attached.join(', ')}.`);
       this.reply(`Done: ${text.split('\n')[0].slice(0, 80)}`);
     })();
     await Promise.race([work, stop]);

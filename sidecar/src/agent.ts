@@ -8,10 +8,11 @@ import {
   type PermissionUpdate,
 } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
+import { messageContent } from './attachments.js';
 
 /** An async queue we hand to query() as its prompt, so one Claude Code session lives across many turns. */
 class InputQueue implements AsyncIterable<SDKUserMessage> {
@@ -136,14 +137,14 @@ export class AgentSession {
     return this.permissionMode;
   }
 
-  send(text: string, action?: { kind: ItemAction; key: string }): void {
+  send(text: string, action?: { kind: ItemAction; key: string }, attachments: Attachment[] = []): void {
     this.pendingTurns++;
     const uuid = randomUUID();
-    this.emit({ type: 'user', text, action, uuid });
+    this.emit({ type: 'user', text, action, uuid, ...(attachments.length ? { attachments: attachments.map((a) => a.name) } : {}) });
     this.emit({ type: 'busy', busy: true });
     this.input.push({
       type: 'user',
-      message: { role: 'user', content: text },
+      message: { role: 'user', content: messageContent(text, attachments) },
       parent_tool_use_id: null,
       origin: { kind: 'human' },
       uuid,
@@ -307,6 +308,10 @@ export class AgentSession {
 
   private currentMsgId = '';
 
+  private emitCommands(list: { name: string; description: string; argumentHint?: string }[]): void {
+    this.emit({ type: 'commands', commands: list.map((c) => ({ name: c.name, description: c.description, ...(c.argumentHint ? { argumentHint: c.argumentHint } : {}) })) });
+  }
+
   private handleSystem(msg: Extract<SDKMessage, { type: 'system' }>): void {
     switch (msg.subtype) {
       case 'init':
@@ -327,6 +332,7 @@ export class AgentSession {
             slashCommands: msg.slash_commands,
           },
         });
+        void this.q?.supportedCommands().then((c) => this.emitCommands(c), () => undefined);
         // Claude Code may start in a different mode than asked (auto mode can be unavailable).
         if (msg.permissionMode && msg.permissionMode !== this.permissionMode) {
           const asked = this.permissionMode;
@@ -338,6 +344,8 @@ export class AgentSession {
           this.emit({ type: 'notice', level: 'warn', text: `The agent is signed in with "${msg.apiKeySource}", not your subscription login. Usage may be billed to the API.` });
         }
         return;
+      case 'commands_changed':
+        return this.emitCommands(msg.commands);
       case 'background_tasks_changed':
         return this.processes.replaceLive(msg.tasks);
       case 'task_started':

@@ -107,6 +107,9 @@ export function onEvent(e: SidecarEvent): void {
     case 'session':
       p.session = e.info;
       break;
+    case 'commands':
+      p.commands = e.commands;
+      return;
     case 'mode':
       p.mode = e.mode;
       if (isActive) renderComposer();
@@ -139,7 +142,7 @@ export function onEvent(e: SidecarEvent): void {
     }
     case 'user':
       startTurn(p, e);
-      userMessage(p, e.text, e.action);
+      userMessage(p, e.text, e.action, e.attachments);
       scrollToEnd(p);
       p.freshTurn = true;
       break;
