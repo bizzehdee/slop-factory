@@ -129,13 +129,23 @@ export function runnableQueued(p: Proj): Set<string> {
   }));
 }
 
+/** Queued items known to be waiting on something: the ones a change to the task files can free. */
+export function waitingQueued(p: Proj): Set<string> {
+  const items = allItems(p);
+  return new Set(p.priorities.filter((k) => {
+    const it = items.get(k);
+    return it && !it.done && !!waitingOn(it, items);
+  }));
+}
+
 /**
  * Task files changed: if that freed a queued item (what it waited on is done now), start it when
- * its lane is free. Only newly freed items count, so opening a project never sets the queue off.
+ * its lane is free. Only items that were waiting count: one that has only just been read, as the
+ * files load while a project opens, wasn't freed, so opening a project never sets the queue off.
  */
-export function startFreed(p: Proj, before: Set<string>): void {
+export function startFreed(p: Proj, wasWaiting: Set<string>): void {
   if (p.holdQueue || p.replaying) return;
-  const freed = [...runnableQueued(p)].filter((k) => !before.has(k));
+  const freed = [...runnableQueued(p)].filter((k) => wasWaiting.has(k));
   if (!freed.length) return;
   if (freed.some((k) => laneOf(p, k) === 'subagent')) startSubagentQueued(p);
   if (isFree(p) && freed.some((k) => laneOf(p, k) === 'main')) {

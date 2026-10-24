@@ -117,14 +117,25 @@ export async function init(): Promise<void> {
     }
   });
 
-  // Reopen what was open last time. Projects still running in the sidecar replay their state.
+  // Reopen what was open when the app last closed, which the sidecar keeps. Projects given in the
+  // address (a development server, the tests) open on their own instead.
   const fromUrl = new URLSearchParams(location.search).getAll('project');
-  let saved: string[] = [];
-  try {
-    saved = JSON.parse(load('slop-factory:projects') ?? '[]');
-  } catch {
-    saved = [];
+  if (fromUrl.length) {
+    setRestoreActive(fromUrl[fromUrl.length - 1]);
+    for (const dir of new Set(fromUrl)) send({ type: 'open', projectDir: dir });
+  } else send({ type: 'openProjects' });
+}
+
+/** The sidecar's list of projects to reopen; before it kept one, the window's own. */
+export function reopenProjects(list: string[] | undefined, activeDir: string | undefined): void {
+  let saved = list;
+  if (!saved) {
+    try {
+      saved = JSON.parse(load('slop-factory:projects') ?? '[]');
+    } catch {
+      saved = [];
+    }
   }
-  setRestoreActive(fromUrl.length ? fromUrl[fromUrl.length - 1] : load('slop-factory:active'));
-  for (const dir of new Set([...saved, ...fromUrl])) send({ type: 'open', projectDir: dir });
+  setRestoreActive(activeDir ?? load('slop-factory:active'));
+  for (const dir of new Set(saved)) send({ type: 'open', projectDir: dir });
 }

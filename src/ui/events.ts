@@ -7,7 +7,7 @@ import { loginUrl, onLoginEvent } from './login';
 import { onCreateEvent } from './newproject';
 import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
-import { nextQueued, runnableQueued, startFreed, startQueued, trackLane } from './queue';
+import { nextQueued, startFreed, waitingQueued, startQueued, trackLane } from './queue';
 import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
@@ -18,6 +18,7 @@ import { clearQueuedTurns, endTurn, noteToolUse, onRewound, startTurn } from './
 import { noteGauges, renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
 import { onGitChanges, renderGit, setFetchMinutes } from './git';
+import { reopenProjects } from './app';
 
 // ---------- events ----------
 
@@ -44,6 +45,8 @@ export function onEvent(e: SidecarEvent): void {
     case 'editors':
       setEditorList(e.list);
       return;
+    case 'openProjects':
+      return reopenProjects(e.list, e.active);
     case 'gitSettings':
       setFetchMinutes(e.fetchMinutes);
       $<HTMLSelectElement>('fetch-minutes').value = String(e.fetchMinutes);
@@ -243,7 +246,7 @@ export function onEvent(e: SidecarEvent): void {
       }
       return;
     case 'tasks': {
-      const before = p.tasks.length ? runnableQueued(p) : undefined;
+      const before = p.tasks.length ? waitingQueued(p) : undefined;
       p.tasks = e.files;
       p.docs = new Set(e.docs);
       p.docQuestions = e.questions ?? [];

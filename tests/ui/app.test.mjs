@@ -656,3 +656,48 @@ test('a run of tool calls folds into one group, and a call left running stops lo
   assert.equal(await page.locator('.transcript:not([hidden]) details.tool.pending').count(), 0, 'nothing still blinking');
   assert.deepEqual(page.errors, []);
 });
+
+test('projects open when the app quits are open again when it restarts, and closed ones are not', async () => {
+  const a = await app.project();
+  const b = await app.project();
+  const name = (d) => path.basename(d);
+  let page = await app.open(a, b);
+  await page.waitForSelector(`#project-list li:has-text("${name(a)}")`);
+  await page.click(`#project-list li:has-text("${name(b)}")`);
+  await page.waitForSelector(`#project-name:has-text("${name(b)}")`);
+  await page.close();
+  // Quit and reopen: a fresh window that remembers nothing itself.
+  await app.restartSidecar();
+  page = await app.open();
+  await page.waitForSelector(`#project-list li:has-text("${name(a)}")`);
+  await page.waitForSelector(`#project-list li:has-text("${name(b)}")`);
+  await page.waitForSelector(`#project-name:has-text("${name(b)}")`, { timeout: 15_000 });
+
+  // Closing one yourself means it stays closed next time.
+  await page.click('#project-menu');
+  await page.click('#menu .menu-item:has-text("Close project")');
+  await page.waitForFunction((n) => ![...document.querySelectorAll('#project-list li')].some((li) => li.textContent.includes(n)), name(b));
+  await page.close();
+  await app.restartSidecar();
+  page = await app.open();
+  await page.waitForSelector(`#project-list li:has-text("${name(a)}")`);
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator(`#project-list li:has-text("${name(b)}")`).count(), 0);
+  assert.deepEqual(page.errors, []);
+});
+
+test("a queued task that's only just been read isn't started as if it had been freed", async () => {
+  // The phase document turns up after the project opens, as it can while the files load.
+  const dir = await app.project({ 'tasks/task_phase_2.md': null });
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(path.join(dir, '.slop-factory'), { recursive: true });
+  await writeFile(path.join(dir, '.slop-factory/priorities.json'), JSON.stringify({ order: ['T5'] }));
+  const page = await app.open(dir);
+  await page.waitForSelector('#project-header:not([hidden])');
+  await page.waitForTimeout(300);
+  await writeFile(path.join(dir, 'tasks/task_phase_2.md'), '# Phase 2: Export\n\n## Tasks\n\n- [x] T2: Schema\n- [ ] T5: Report\n');
+  await page.waitForSelector('.task:has-text("Report")');
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator('.msg.user.action').count(), 0, 'nothing started');
+  assert.equal(await page.locator('.priority:has-text("T5")').count(), 1, 'still queued');
+});

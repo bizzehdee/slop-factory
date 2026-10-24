@@ -193,6 +193,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   });
   const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent, git };
   projects.set(dir, project);
+  void providers.projectOpened(dir).catch(() => undefined);
   // A turn ending, task files changing or a worktree merging can all move the repository on.
   shell.onEvent = (e) => {
     if (e.type === 'turnEnd' || e.type === 'tasks' || e.type === 'worktrees' || (e.type === 'busy' && !e.busy)) git.poke();
@@ -291,9 +292,20 @@ async function handle(cmd: UiCommand): Promise<void> {
   if ('project' in cmd && cmd.project) await opening.get(cmd.project)?.catch(() => undefined);
   switch (cmd.type) {
     case 'open':
-      return openProject(cmd.projectDir, cmd.permissionMode);
+      return openProject(cmd.projectDir, cmd.permissionMode).catch(async (err) => {
+        // A folder that has gone since last time isn't tried again at the next start.
+        if (!(await fs.stat(path.resolve(cmd.projectDir)).catch(() => null))?.isDirectory()) await providers.projectClosed(path.resolve(cmd.projectDir));
+        throw err;
+      });
     case 'close':
+      await providers.projectClosed(path.resolve(cmd.project));
       return closeProject(cmd.project);
+    case 'openProjects': {
+      const { list, active } = providers.openProjects;
+      return emit({ type: 'openProjects', list, active });
+    }
+    case 'setActiveProject':
+      return providers.setActiveProject(path.resolve(cmd.project));
     case 'openFolder':
       return openInFileManager(need(cmd.project).dir);
     case 'openWith':

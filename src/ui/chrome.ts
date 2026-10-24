@@ -310,6 +310,7 @@ export function activate(p: Proj | undefined): void {
     p.unseen = false;
     prompt.value = p.draft;
     store('slop-factory:active', p.dir);
+    send({ type: 'setActiveProject', project: p.dir });
     requestAnimationFrame(() => (p.transcript.scrollTop = p.transcript.scrollHeight));
     if (docsView && docsView.project !== p.dir) closeDocs();
     refreshWorktrees(p);

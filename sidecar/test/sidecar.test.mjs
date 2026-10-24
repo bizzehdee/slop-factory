@@ -1051,3 +1051,29 @@ test('uncommitted changes: each file with how it changed, and one diff including
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('the open projects are kept across restarts; closing one drops it; saves never interleave', async () => {
+  const { ProviderStore } = await import('../dist/providers.js');
+  const dir = await mkdtemp(path.join(tmpdir(), 'open-'));
+  const saved = process.env.SLOP_FACTORY_CONFIG_DIR;
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
+  try {
+    let store = new ProviderStore();
+    await store.load();
+    assert.equal(store.openProjects.list, undefined, 'never kept yet');
+    // Several projects opening at once write together.
+    await Promise.all(['/a', '/b', '/c'].map((d) => store.projectOpened(d)));
+    await store.setActiveProject('/b');
+    await store.projectClosed('/c');
+    store = new ProviderStore();
+    await store.load();
+    assert.deepEqual(store.openProjects, { list: ['/a', '/b'], active: '/b' });
+    JSON.parse(await readFile(path.join(dir, 'config.json'), 'utf8'));
+    await store.projectClosed('/b');
+    assert.deepEqual(store.openProjects, { list: ['/a'], active: undefined });
+  } finally {
+    if (saved === undefined) delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    else process.env.SLOP_FACTORY_CONFIG_DIR = saved;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -23,6 +23,8 @@ interface DeskState {
   projectSession: Record<string, string>; // each project's conversation, picked up after a restart
   projectAutoPull: Record<string, boolean>; // projects that pull by themselves when it's safe
   gitFetchMinutes?: number; // how often open projects fetch; 0 never (default 5)
+  openProjects?: string[]; // what was open when the app last closed, reopened at start; absent before this was kept here
+  activeProject?: string; // the one that was showing
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -46,6 +48,8 @@ export class ProviderStore {
         projectSession: raw.projectSession && typeof raw.projectSession === 'object' ? raw.projectSession : {},
         projectAutoPull: raw.projectAutoPull && typeof raw.projectAutoPull === 'object' ? raw.projectAutoPull : {},
         gitFetchMinutes: typeof raw.gitFetchMinutes === 'number' && raw.gitFetchMinutes >= 0 ? raw.gitFetchMinutes : undefined,
+        openProjects: Array.isArray(raw.openProjects) ? raw.openProjects.filter((d: unknown) => typeof d === 'string') : undefined,
+        activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
       };
     } catch {
       /* first run */
@@ -81,6 +85,31 @@ export class ProviderStore {
     if (this.state.projectSession[dir] === id) return;
     if (id) this.state.projectSession[dir] = id;
     else delete this.state.projectSession[dir];
+    await this.save();
+  }
+
+  /** The projects to reopen, and the one to show; undefined when the app has never kept them. */
+  get openProjects(): { list: string[] | undefined; active: string | undefined } {
+    return { list: this.state.openProjects, active: this.state.activeProject };
+  }
+
+  async projectOpened(dir: string): Promise<void> {
+    const list = this.state.openProjects ?? [];
+    if (list.includes(dir)) return;
+    this.state.openProjects = [...list, dir];
+    await this.save();
+  }
+
+  /** Closed by you, not by the app quitting: it isn't reopened next time. */
+  async projectClosed(dir: string): Promise<void> {
+    this.state.openProjects = (this.state.openProjects ?? []).filter((d) => d !== dir);
+    if (this.state.activeProject === dir) this.state.activeProject = undefined;
+    await this.save();
+  }
+
+  async setActiveProject(dir: string): Promise<void> {
+    if (this.state.activeProject === dir) return;
+    this.state.activeProject = dir;
     await this.save();
   }
 
@@ -145,9 +174,17 @@ export class ProviderStore {
     return affected;
   }
 
-  private async save(): Promise<void> {
-    await fs.mkdir(path.dirname(this.file), { recursive: true });
-    await fs.writeFile(this.file, JSON.stringify(this.state, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  private writing: Promise<void> = Promise.resolve();
+
+  /** Writes go one after another, so several projects opening at once can't interleave them. */
+  private save(): Promise<void> {
+    const text = JSON.stringify(this.state, null, 2) + '\n';
+    const write = async () => {
+      await fs.mkdir(path.dirname(this.file), { recursive: true });
+      await fs.writeFile(this.file, text, { encoding: 'utf8', mode: 0o600 });
+    };
+    this.writing = this.writing.then(write, write);
+    return this.writing;
   }
 }
 

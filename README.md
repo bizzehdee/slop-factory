@@ -43,7 +43,8 @@ aren't looking at. Switch with the sidebar or Ctrl/Cmd+1–9; the sidebar shows 
 working and which need you, and a desktop notification tells you when one you aren't looking at
 finishes or is waiting for an answer.
 
-Conversations carry on where they left off when you reopen the app. Choose **New conversation** in
+Quit with projects open and they're open again next time, on the one you were looking at, each
+conversation carrying on where it left off. Choose **New conversation** in
 the project menu to start afresh.
 
 ## The delivery board
