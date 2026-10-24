@@ -603,3 +603,26 @@ test("a local model's context gauge is sized by its server, with no subscription
     server.close();
   }
 });
+
+test('a run of tool calls folds into one group, and a call left running stops looking busy when the turn ends', async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Use several tools');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("I had a look around.")');
+  const group = page.locator('.transcript:not([hidden]) details.tool-group');
+  assert.equal(await group.count(), 1);
+  assert.equal(await group.locator('.tool-group-body > details.tool').count(), 3);
+  assert.equal(await group.evaluate((g) => g.open), false, 'folded until you open it');
+  assert.match(await group.locator(':scope > summary').textContent(), /3 tool calls.*Read · Search · Bash/);
+  assert.equal(await page.locator('.transcript:not([hidden]) details.tool.pending').count(), 0);
+  await group.locator(':scope > summary').click();
+  assert.equal(await group.locator('.tool-group-body > details.tool').first().isVisible(), true);
+
+  await page.fill('#prompt', 'Run a tool that hangs');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.transcript:not([hidden]) details.tool.pending');
+  await page.click('#stop');
+  await page.waitForSelector('.transcript:not([hidden]) details.tool.unfinished:has-text("Stopped")');
+  assert.equal(await page.locator('.transcript:not([hidden]) details.tool.pending').count(), 0, 'nothing still blinking');
+  assert.deepEqual(page.errors, []);
+});

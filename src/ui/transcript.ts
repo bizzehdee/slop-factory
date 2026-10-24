@@ -120,7 +120,78 @@ export function nestUnder(p: Proj, parentToolId: string, el: HTMLElement): void 
   stickToBottom(p, () => list!.append(el));
 }
 
+// ---------- runs of tool calls fold into one collapsible group ----------
+
+// These stay on their own: a subagent's card links to its transcript, and a question waits on you.
+const ALONE = new Set(['Agent', 'Task', 'AskUserQuestion']);
+const groupable = (el: Element | null): el is HTMLDetailsElement => !!el && el.matches('details.tool') && !ALONE.has((el as HTMLElement).dataset.tool ?? '');
+
+/** Add a tool card to the conversation, joining the run of tool calls just before it if there is one. */
+function addToolCard(p: Proj, card: HTMLDetailsElement): void {
+  const last = p.transcript.lastElementChild;
+  if (!groupable(card)) return appendEntry(p, card);
+  stickToBottom(p, () => {
+    if (last?.matches('details.tool-group')) {
+      last.querySelector('.tool-group-body')!.append(card);
+      return updateGroup(last as HTMLDetailsElement);
+    }
+    if (!groupable(last)) return void p.transcript.append(card);
+    const group = h(
+      'details',
+      { class: 'tool tool-group' },
+      h('summary', {}, h('span', { class: 'tool-line' }, h('span', { class: 'bullet', 'aria-hidden': 'true' }), h('span', { class: 'tool-group-title' }), h('span', { class: 'tool-group-names' }))),
+      h('div', { class: 'tool-group-body' }),
+    ) as HTMLDetailsElement;
+    last.replaceWith(group);
+    group.querySelector('.tool-group-body')!.append(last, card);
+    updateGroup(group);
+  });
+}
+
+/** A group's summary: how many calls, of what, which is running now, and any that failed. */
+export function updateGroup(group: HTMLDetailsElement): void {
+  const cards = [...group.querySelectorAll<HTMLElement>(':scope > .tool-group-body > details.tool')];
+  const running = cards.filter((c) => c.classList.contains('pending'));
+  const failed = cards.filter((c) => c.classList.contains('failed')).length;
+  group.classList.toggle('pending', running.length > 0);
+  group.classList.toggle('failed', failed > 0 && !running.length);
+  const counts = new Map<string, number>();
+  for (const c of cards) {
+    // By the name each card shows (Grep reads as Search, and so on).
+    const name = c.querySelector('.tool-name')?.textContent || c.dataset.tool || 'Tool';
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const now = running.at(-1)?.querySelector('.tool-call')?.textContent;
+  group.querySelector('.tool-group-title')!.textContent = now ? `${now}` : `${cards.length} tool calls`;
+  group.querySelector('.tool-group-names')!.textContent = [
+    now ? `${cards.length} calls` : '',
+    [...counts].map(([n, k]) => (k > 1 ? `${n} ×${k}` : n)).join(' · '),
+    failed ? `${failed} failed` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
+
+const groupOf = (card: Element) => card.parentElement?.closest<HTMLDetailsElement>('details.tool-group') ?? null;
+
+/**
+ * The turn is over: a call still showing as running never got its result (the turn was stopped,
+ * or the agent moved on), so it stops looking busy.
+ */
+export function settleTools(p: Proj, stopped: boolean): void {
+  for (const card of p.transcript.querySelectorAll<HTMLElement>('details.tool.pending:not(.tool-group)')) {
+    card.classList.remove('pending');
+    card.classList.add('unfinished');
+    const text = card.querySelector('.tool-result-text');
+    if (text) text.textContent = stopped ? 'Stopped' : 'No result';
+    const g = groupOf(card);
+    if (g) updateGroup(g);
+  }
+}
+
 export function toolUse(p: Proj, id: string, name: string, input: unknown, parent: string | null): void {
+  // The same call delivered twice (a replay, say) keeps its one card.
+  if (p.toolCards.has(id)) return;
   const s = toolSummary(p, name, input);
   if (parent) {
     const line = h('div', { class: 'sub-step' }, ledgerCall(s));
@@ -151,7 +222,7 @@ export function toolUse(p: Proj, id: string, name: string, input: unknown, paren
     card.querySelector('.tool-line')!.append(view);
   }
   p.toolCards.set(id, card);
-  appendEntry(p, card);
+  addToolCard(p, card as HTMLDetailsElement);
 }
 
 export function toolResult(p: Proj, toolUseId: string, isError: boolean, preview: string): void {
@@ -166,6 +237,8 @@ export function toolResult(p: Proj, toolUseId: string, isError: boolean, preview
     card.append(h('pre', { class: 'tool-output' }, preview));
     if (isError) (card as HTMLDetailsElement).open = true;
   }
+  const g = groupOf(card);
+  if (g) updateGroup(g);
 }
 
 export function permissionRequest(p: Proj, id: string, toolName: string, input: unknown, reason?: string): void {

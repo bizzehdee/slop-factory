@@ -10,7 +10,7 @@ import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, sc
 import { nextQueued, runnableQueued, startFreed, startQueued, trackLane } from './queue';
 import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
-import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
+import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
@@ -210,6 +210,7 @@ export function onEvent(e: SidecarEvent): void {
       }
       return markAnswered(p, e.id, 'Cancelled');
     case 'turnEnd':
+      settleTools(p, !!e.stopped);
       p.lastTurn = e;
       endTurn(p);
       if (!p.replaying) refreshWorktrees(p);

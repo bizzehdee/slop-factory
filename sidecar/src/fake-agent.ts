@@ -256,6 +256,28 @@ export class FakeSession {
         const answers = await this.ask<Record<string, string> | null>(id, { type: 'askQuestions', id, questions: ASKED });
         return this.reply(answers ? `Thanks. ${Object.values(answers).join('; ')}.` : "I'll wait for your answer in the chat.");
       }
+      if (lower.includes('several tools')) {
+        // A run of calls, as the agent makes while it looks around.
+        const calls: [string, unknown, string][] = [
+          ['Read', { file_path: path.join(this.cwd, 'plan.md') }, '# A small app'],
+          ['Grep', { pattern: 'export' }, 'src/app.js'],
+          ['Bash', { command: 'npm test' }, '12 passing'],
+        ];
+        for (const [name, input, out] of calls) {
+          const id = `tool_${randomUUID().slice(0, 8)}`;
+          this.emit({ type: 'toolUse', id, name, input, parent: null });
+          await this.sleep(30);
+          this.emit({ type: 'toolResult', toolUseId: id, isError: false, preview: out });
+        }
+        return this.reply('I had a look around.');
+      }
+      if (lower.includes('tool that hangs')) {
+        // A call whose result never comes before the turn is stopped.
+        this.emit({ type: 'toolUse', id: `tool_${randomUUID().slice(0, 8)}`, name: 'Bash', input: { command: 'sleep 600' }, parent: null });
+        await this.sleep(10_000);
+        if (stopped) return;
+        return this.reply('Finished waiting.');
+      }
       if (lower.includes('choose a provider')) {
         return this.reply(
           'You dismissed the questions, so reply with your pick and I will record it in plan.md and take it off the open questions list:\n\n' +

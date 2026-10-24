@@ -644,6 +644,49 @@ textarea {
 .tool.failed .bullet {
   background: var(--bug);
 }
+.tool.unfinished .bullet {
+  background: var(--faint);
+}
+.tool-group > summary .tool-line {
+  color: var(--muted);
+}
+.tool-group-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+.tool-group:not(.pending) .tool-group-title {
+  font-weight: 700;
+}
+.tool-group-names {
+  flex: none;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+}
+.tool-group > summary::after {
+  content: '▸';
+  margin-left: 22px;
+  color: var(--faint);
+  font-size: 0.6875rem;
+}
+.tool-group[open] > summary::after {
+  content: '▾';
+}
+.tool-group > summary {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.tool-group-body {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 2px 11px;
+  padding-left: 12px;
+  border-left: 1px solid var(--line);
+}
 .tool-call {
   min-width: 0;
   overflow: hidden;

@@ -128,6 +128,9 @@ describes the format.
 
 ![The message box with an image and a spec attached, and / listing commands](docs/screenshots/composer.png)
 
+- **Tool calls fold up.** A run of tool calls (files read, searches, commands) shows as one line
+  with what it's doing now and a count; open it to see each call and its result. A call that never
+  finished, because you stopped the turn, stops showing as running.
 - **What each turn changed.** When the agent edits files, the turn ends with the files it changed.
   **Review** shows the edits; **Undo** puts those files back as they were before the turn.
 
