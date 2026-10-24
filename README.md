@@ -13,7 +13,7 @@ standards, and works with any project.
 
 ## Install
 
-Download the latest installer from the [Releases page](https://github.com/bizzehdee/claude-desk/releases):
+Download the latest installer from the [Releases page](https://github.com/bizzehdee/slop-factory/releases):
 
 | System | Download |
 |---|---|
