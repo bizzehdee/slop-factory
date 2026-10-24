@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { AgentSession } from './agent.js';
 import { FakeSession, fakeDelete, fakeFork, fakeRename, fakeSessions } from './fake-agent.js';
+import { shareConfig } from './shared.js';
 import { deleteConversation, forkConversation, renameConversation, sessionList } from './sessions.js';
 import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
@@ -88,6 +89,8 @@ type Session = AgentSession | FakeSession;
 /** A session that remembers its conversation id, so the project can pick it up after a restart. */
 /** A local provider with the context window its server gives the model, for the agent to work within. */
 async function withContext(provider: ProviderConfig): Promise<ProviderConfig> {
+  // Another login shares your own settings, skills and the like.
+  if (provider.configDir) await shareConfig(provider.configDir).catch(() => undefined);
   if (provider.kind === 'subscription') return provider;
   const contextTokens = await serverContextWindow(provider).catch(() => undefined);
   return contextTokens ? { ...provider, contextTokens } : provider;

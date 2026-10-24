@@ -48,6 +48,7 @@ const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', '
 const TASK_STARTS: TaskStart[] = ['current', 'compact', 'new'];
 
 import { appVersion, configDir, writeFileAtomic } from './names.js';
+import { shareConfig } from './shared.js';
 
 export { configDir };
 
@@ -142,6 +143,7 @@ export class ProviderStore {
     for (let n = 2; id === DEFAULT_ACCOUNT || this.stored(id); n++) id = `${base}-${n}`;
     const dir = path.join(configDir(), 'accounts', id);
     await fs.mkdir(dir, { recursive: true });
+    await shareConfig(dir).catch(() => undefined);
     const a = { id, name: clean, dir };
     this.state.accounts = [...(this.state.accounts ?? []), a];
     await this.save();

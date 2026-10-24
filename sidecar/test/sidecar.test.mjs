@@ -1290,3 +1290,30 @@ test("conversations are read from the login's own folder, and can be renamed, br
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("an account's folder links to the default login's own config, and leaves its own files alone", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-share-'));
+  try {
+    const { shareConfig } = await import('../dist/shared.js');
+    const home = path.join(root, 'home');
+    const acct = path.join(root, 'acct');
+    await mkdir(path.join(home, 'skills', 'mine'), { recursive: true });
+    await mkdir(acct, { recursive: true });
+    await writeFile(path.join(home, 'CLAUDE.md'), 'be brief');
+    await writeFile(path.join(home, 'settings.json'), '{"a":1}');
+    await writeFile(path.join(home, '.credentials.json'), 'secret');
+    await writeFile(path.join(acct, 'settings.json'), '{"b":2}'); // the account's own
+    assert.deepEqual((await shareConfig(acct, home)).sort(), ['CLAUDE.md', 'skills']);
+    assert.equal(await readFile(path.join(acct, 'CLAUDE.md'), 'utf8'), 'be brief');
+    assert.equal(await readFile(path.join(acct, 'settings.json'), 'utf8'), '{"b":2}');
+    assert.equal((await stat(path.join(acct, 'skills', 'mine'))).isDirectory(), true);
+    await assert.rejects(stat(path.join(acct, '.credentials.json')));
+    // Edits go both ways, and a second pass changes nothing.
+    await writeFile(path.join(acct, 'CLAUDE.md'), 'be thorough');
+    assert.equal(await readFile(path.join(home, 'CLAUDE.md'), 'utf8'), 'be thorough');
+    assert.deepEqual(await shareConfig(acct, home), []);
+    assert.deepEqual(await shareConfig(home, home), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

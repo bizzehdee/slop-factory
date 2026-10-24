@@ -253,7 +253,11 @@ under, with the email and plan Claude Code reports for it, shows under the proje
 
 Each account keeps its own conversation for a project: switching a project from one to the other
 swaps the conversation with it, and switching back finds the first one where you left it. **This
-computer's login** is whatever Claude Code is already signed in as. Removing an account only
+computer's login** is whatever Claude Code is already signed in as. Your own `CLAUDE.md`, settings,
+keybindings, skills, commands, agents, hooks and plugins from that login are shared with every
+account (linked, so editing one edits both; a copy where links aren't allowed), and anything an
+account already has of its own is left alone. Sign-ins and conversations are never shared. MCP
+servers added for "all my projects" live with each login, so add them to each account that needs them. Removing an account only
 forgets it here; its folder and history stay on disk. Accounts apply to Claude subscriptions and
 Console logins; local models don't use one.
 
