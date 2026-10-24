@@ -28,6 +28,24 @@ jobs:
       - name: Interface type check and build
         run: npm run build
 
+  ui:
+    name: Interface tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            sidecar/package-lock.json
+      - run: npm ci
+      - run: npm --prefix sidecar ci
+      - run: npx playwright install --with-deps chromium
+      # The interface against a scripted agent (sidecar/src/fake-agent.ts), in a real browser.
+      - run: npm run test:ui
+
   shell:
     name: Desktop shell (Rust)
     runs-on: ubuntu-22.04

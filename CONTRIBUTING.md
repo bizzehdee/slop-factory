@@ -33,7 +33,9 @@ This file is for working on Slop Factory itself. To use it, see the [README](REA
   `sidecar/src/editors.ts` finds editors for **Open with**.
 - `sidecar/src/names.ts` holds the app's name, version and storage locations.
 - `sidecar/src/protocol.ts` is the whole message contract between the window and the sidecar.
-- `src/main.ts` is the interface, with no framework; `src/styles.css` its styles.
+- `src/main.ts` starts the interface in `src/ui/`, written without a framework: `app.ts` wires it
+  up, `events.ts` handles the sidecar's events, and each area has its own module (board, queue,
+  questions, docs, menus, settings and so on). `src/styles.css` holds the styles.
 
 ## Requirements
 
@@ -73,11 +75,18 @@ npm run dev:browser
 
 ```bash
 npm test          # sidecar: task parsing, watching, questions, queue, prompts, providers, new projects
+npm run test:ui   # the interface in a real browser, against a scripted agent
 npm run build     # interface type check and production build
 cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
 ```
 
-CI runs all three on every pull request.
+CI runs all four on every pull request.
+
+`npm run test:ui` starts the dev bridge and Vite with `SLOP_FACTORY_FAKE_AGENT=1`, which swaps the
+agent for `sidecar/src/fake-agent.ts`: a scripted session that replies, asks questions, asks for
+permission or runs a subagent depending on words in the message, without calling any model. The
+tests are in `tests/ui/`; they need ports 1420 and 1421 free and Playwright's Chromium
+(`npx playwright install chromium`).
 
 ## Building installers
 

@@ -10,7 +10,8 @@
     "dev:browser": "npm run sidecar:build && concurrently -k -n bridge,vite \"node scripts/dev-bridge.mjs\" \"vite\"",
     "build": "tsc --noEmit && vite build",
     "tauri": "tauri",
-    "test": "npm --prefix sidecar test"
+    "test": "npm --prefix sidecar test",
+    "test:ui": "npm run sidecar:build && node --test --test-concurrency=1 tests/ui/*.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.3.0",
@@ -25,6 +26,7 @@
     "@tauri-apps/cli": "^2.12.4",
     "@types/dompurify": "^3.0.5",
     "concurrently": "^10.0.6",
+    "playwright": "1.63.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.5",
     "ws": "^8.22.0"

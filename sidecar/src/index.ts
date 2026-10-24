@@ -6,6 +6,7 @@ import { readFileSync, promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { AgentSession } from './agent.js';
+import { FakeSession } from './fake-agent.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
 import { Priorities, promptFor, type DeskPrompts } from './actions.js';
@@ -43,7 +44,7 @@ const MAX_TRANSCRIPT = 3000;
 interface Project {
   dir: string;
   out: (e: ProjectEvent) => void;
-  session: AgentSession;
+  session: Session;
   tasks: TaskWatcher;
   priorities: Priorities;
   prompts: DeskPrompts;
@@ -54,6 +55,12 @@ interface Project {
 }
 
 const projects = new Map<string, Project>();
+
+// The interface tests run against a scripted agent instead of a real one.
+const FAKE_AGENT = process.env.SLOP_FACTORY_FAKE_AGENT === '1';
+type Session = AgentSession | FakeSession;
+const newSession = (...args: ConstructorParameters<typeof AgentSession>): Session => (FAKE_AGENT ? new FakeSession(...args) : new AgentSession(...args));
+const checkAuth = () => (FAKE_AGENT ? Promise.resolve({ loggedIn: true, method: 'fake' }) : authStatus());
 const providers = new ProviderStore();
 
 function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'openPermissions'>) {
@@ -109,7 +116,7 @@ async function openProject(dirIn: string, requested?: PermissionModeName): Promi
   out(queueEvent(priorities));
 
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
-  const session = new AgentSession(dir, mode, out, provider);
+  const session = newSession(dir, mode, out, provider);
   const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent };
   projects.set(dir, project);
 
@@ -133,7 +140,7 @@ async function closeProject(dir: string): Promise<void> {
 function restartSession(p: Project): void {
   const mode = p.session.mode;
   p.session.close();
-  p.session = new AgentSession(p.dir, mode, p.out, p.session.provider);
+  p.session = newSession(p.dir, mode, p.out, p.session.provider);
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
@@ -145,7 +152,7 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   const provider = await providers.setForProject(p.dir, providerId);
   const mode = p.session.mode;
   p.session.close();
-  p.session = new AgentSession(p.dir, mode, p.out, provider);
+  p.session = newSession(p.dir, mode, p.out, provider);
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
@@ -162,7 +169,7 @@ const login = new LoginFlow(
   (line) => emit({ type: 'loginLine', line }),
   async (ok, error) => {
     emit({ type: 'loginDone', ok, error });
-    emit({ type: 'auth', state: await authStatus() });
+    emit({ type: 'auth', state: await checkAuth() });
   },
 );
 
@@ -201,7 +208,7 @@ async function handle(cmd: UiCommand): Promise<void> {
       emit({ type: 'editors', list: await installedEditors() });
       return;
     case 'checkAuth':
-      emit({ type: 'auth', state: await authStatus() });
+      emit({ type: 'auth', state: await checkAuth() });
       return;
     case 'login':
       return login.start(cmd.console);
