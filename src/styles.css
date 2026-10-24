@@ -939,6 +939,10 @@ textarea {
   font-size: var(--step--1);
 }
 .slash-hint {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--faint);
   font-size: var(--step--1);
 }

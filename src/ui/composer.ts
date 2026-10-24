@@ -101,9 +101,14 @@ function matches(p: Proj, value: string): CommandInfo[] {
   if (!m) return [];
   const q = m[1].toLowerCase();
   const known = p.commands.length ? p.commands : (p.session?.slashCommands ?? []).map((name) => ({ name, description: '' }));
-  const starts = known.filter((c) => c.name.toLowerCase().startsWith(q));
-  const contains = known.filter((c) => !c.name.toLowerCase().startsWith(q) && (c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)));
-  return [...starts, ...contains].slice(0, 12);
+  // Names that start with what's typed, then names that contain it, then (from three letters)
+  // descriptions with a word that starts with it.
+  const name = (c: CommandInfo) => c.name.toLowerCase();
+  const starts = known.filter((c) => name(c).startsWith(q));
+  const inName = known.filter((c) => !name(c).startsWith(q) && name(c).includes(q));
+  const word = new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+  const inDesc = q.length >= 3 ? known.filter((c) => !name(c).includes(q) && word.test(c.description)) : [];
+  return [...starts, ...inName, ...inDesc].slice(0, 12);
 }
 
 export function renderSlashMenu(): void {
