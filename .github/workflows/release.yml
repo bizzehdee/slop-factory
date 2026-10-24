@@ -23,9 +23,15 @@ jobs:
       # A draft until every platform has uploaded, so nobody downloads a half-finished release.
       - id: release
         run: |
-          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Slop Factory ${{ steps.version.outputs.version }}" --generate-notes
-          # Drafts can't be looked up by tag, so the build jobs upload by id.
-          echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id")" >> "$GITHUB_OUTPUT"
+          # Drafts can't be looked up by tag, so find it in the list; the build jobs upload by id.
+          find_release() { gh api "repos/$GITHUB_REPOSITORY/releases" --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -n 1; }
+          id=$(find_release)
+          # A re-pushed tag reuses the release an earlier run made.
+          if [ -z "$id" ]; then
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --title "Slop Factory ${{ steps.version.outputs.version }}" --generate-notes
+            id=$(find_release)
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
         env:
           GH_TOKEN: ${{ github.token }}
 
