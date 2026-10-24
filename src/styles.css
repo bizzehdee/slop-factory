@@ -152,6 +152,18 @@ textarea {
 }
 .side-pane {
   border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+}
+.side-pane > section {
+  flex-shrink: 0;
+}
+/* The gauges and model stay at the bottom, in view however long the lists above get. */
+.side-pane > .session-section {
+  margin-top: auto;
+  position: sticky;
+  bottom: 0;
+  background: var(--sidebar);
 }
 
 .project-button {

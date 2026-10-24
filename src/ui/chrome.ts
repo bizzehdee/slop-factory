@@ -6,12 +6,11 @@ import { $, ICON_CLOSE, elapsed, h, svgIcon } from './dom';
 import { MenuItem, closeMenu, submenu } from './menus';
 import { newProjectDialog } from './newproject';
 import { renderQuestions } from './questions';
-import { openSettings } from './settings';
 import { Proj, active, editorList, load, projects, providerList, providerOf, send, setActive, store } from './state';
 import { refreshWorktrees, renderWorktrees } from './worktrees';
 import { openSubagent } from './subagents';
 import { renderAttachments, renderSlashMenu } from './composer';
-import { accountLimits, limitText, openUsage, planLimit, renderGauges, usageSummary } from './usage';
+import { openUsage, renderGauges } from './usage';
 import { renderGit } from './git';
 import { frameworkMenu, renderFramework } from './framework';
 
@@ -110,68 +109,13 @@ setInterval(() => {
   document.querySelectorAll<HTMLElement>('.proc.live .proc-time').forEach((t) => (t.textContent = elapsed(Number(t.dataset.start))));
 }, 1000);
 
-export function loginLabel(src: string): { text: string; ok: boolean } {
-  if (src === 'oauth') return { text: 'Claude subscription', ok: true };
-  if (src === 'none') return { text: 'Claude login', ok: true };
-  return { text: `API key (${src})`, ok: false };
-}
-
 export function renderSession(): void {
-  const dl = $('session');
   const p = active;
-  const fw = p?.framework;
-  const s = p?.session;
-  const rows: [string, Node | string][] = [];
-
-  if (fw) {
-    const shadowed = fw.agentsMd && fw.claudeMd.length > 0 && !fw.claudeMdImportsAgents;
-    rows.push([
-      'Rules',
-      fw.agentsMd
-        ? h('span', { class: shadowed ? 'warn-text' : '' }, shadowed ? `AGENTS.md is ignored: ${fw.claudeMd[0]} takes priority and doesn't reference it` : 'AGENTS.md')
-        : fw.claudeMd.length
-          ? fw.claudeMd.join(', ')
-          : h('span', { class: 'muted' }, 'No AGENTS.md or CLAUDE.md'),
-    ]);
-    const claudeSkills = fw.skills.length;
-    const agentSkills = fw.agentsSkills.length;
-    if (agentSkills || claudeSkills) {
-      rows.push([
-        'Standards',
-        agentSkills && !claudeSkills
-          ? `${agentSkills} in .agents/skills, loaded through the AGENTS.md table`
-          : `${claudeSkills} skills the agent can load on its own${agentSkills ? `, ${agentSkills} in .agents/skills` : ''}`,
-      ]);
-    }
-    if (fw.hooks.length) rows.push(['Hooks', fw.hooks.join(', ')]);
-    if (fw.agents.length) rows.push(['Agents', fw.agents.join(', ')]);
-  }
-  if (p) {
-    const prov = providerOf(p);
-    const local = prov.kind !== 'subscription';
-    const edit = h('button', { class: 'link-button', type: 'button', onclick: openSettings }, 'Change');
-    rows.push(['Provider', h('span', {}, local ? `${prov.name} at ${prov.baseUrl}` : prov.name, ' ', edit)]);
-    if (local) rows.push(['Billing', 'Local model, no Anthropic usage']);
-  }
-  if (s) {
-    const login = loginLabel(s.apiKeySource);
-    rows.push(['Model', s.model]);
-    if (providerOf(p!).kind === 'subscription') rows.push(['Billing', h('span', { class: login.ok ? '' : 'warn-text' }, login.text)]);
-    if (s.mcpServers.length) rows.push(['MCP', s.mcpServers.map((m) => `${m.name} (${m.status})`).join(', ')]);
-  }
-  if (p) {
-    const summary = usageSummary(p);
-    if (summary) rows.push(['Usage', h('span', {}, summary, ' ', h('button', { class: 'link-button', type: 'button', onclick: () => openUsage(p) }, 'Details'))]);
-  }
   renderGauges(p);
-  // The gauges show the limits once known; until then, the latest notice says where things stand.
-  if (p && planLimit && providerOf(p).kind === 'subscription' && !accountLimits.fiveHour && !accountLimits.week && !['five_hour', 'seven_day'].includes(planLimit.window ?? '')) {
-    const tight = planLimit.status !== 'allowed' || (planLimit.utilization ?? 0) >= 0.8;
-    rows.push(['Plan', h('span', { class: tight ? 'warn-text' : '' }, limitText(planLimit))]);
-  }
-  if (p?.lastTurn) rows.push(['Last turn', `${(p.lastTurn.durationMs / 1000).toFixed(1)}s, ${p.lastTurn.outputTokens.toLocaleString()} tokens out`]);
-  if (p && !s) rows.push(['', h('span', { class: 'muted' }, 'The agent starts with your first message.')]);
-  dl.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
+  // Just the model beside the gauges; usage and cost are under Usage in the project menu.
+  const rows: [string, Node | string][] = [];
+  if (p) rows.push(['Model', p.session?.model ?? h('span', { class: 'muted' }, 'Known once the agent starts, with your first message')]);
+  $('session').replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
 }
 
 export function closeProject(p: Proj): void {
@@ -196,6 +140,7 @@ export function projectMenu(p: Proj): MenuItem[] {
     },
   ];
   if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
+  items.push({ label: 'Usage', run: () => openUsage(p) });
   items.push(...frameworkMenu(p));
   items.push({ label: 'Copy path', run: () => void navigator.clipboard?.writeText(p.dir) });
   items.push({ label: 'Close project', run: () => closeProject(p) });
@@ -216,7 +161,17 @@ export function renderHeader(): void {
   $('project-path').textContent = `‎${p.dir}‎`;
   $('project-path').title = p.dir;
   const fw = p.framework;
-  $('framework-badge').textContent = fw?.agentsMd ? (fw.agentsSkills.length ? `AGENTS.md with ${fw.agentsSkills.length} standards` : 'AGENTS.md') : '';
+  // A CLAUDE.md that doesn't point to AGENTS.md hides it from the agent: worth saying here.
+  const shadowed = !!fw?.agentsMd && fw.claudeMd.length > 0 && !fw.claudeMdImportsAgents;
+  const badge = $('framework-badge');
+  badge.textContent = shadowed
+    ? `AGENTS.md is ignored: ${fw!.claudeMd[0]} takes priority and doesn’t reference it`
+    : fw?.agentsMd
+      ? fw.agentsSkills.length
+        ? `AGENTS.md with ${fw.agentsSkills.length} standards`
+        : 'AGENTS.md'
+      : '';
+  badge.classList.toggle('warn-text', shadowed);
   document.title = `${p.name} – Slop Factory`;
   renderGit();
   renderFramework();

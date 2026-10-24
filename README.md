@@ -234,21 +234,21 @@ agent-framework are never checked.
 
 The ⋯ beside the project's name opens its folder in your file manager, opens it in an editor
 (Visual Studio Code, Cursor, Zed, Sublime Text, IntelliJ IDEA, WebStorm or PyCharm, whichever are
-installed), shows the plan, checks whether its agent-framework is current, copies the path or
+installed), shows the plan and the project's usage, checks whether its agent-framework is current, copies the path or
 closes the project.
 
 ![The project menu with Open with listing the installed editors](docs/screenshots/project-menu.png)
 
 ## Usage
 
-The Session panel opens with gauges: on your subscription, how much of the **5-hour** and **weekly**
+The Session panel, at the foot of the right sidebar, shows gauges and the model in use: on your subscription, how much of the **5-hour** and **weekly**
 limits you've used and when each resets, and how full the conversation's **context** is. On a
 local model only the context applies, and its size comes from the server itself (llama.cpp or
 Ollama), which the agent is told too, so it summarises older messages before the server runs out of
 room.
 
-Below them, the project's usage today and in all, with **Details**: cost, tokens, turns and time,
-the last 14 days, and each model. On a local model it counts tokens only.
+**Usage** in the project menu shows what the project has used: cost, tokens, turns and time, today
+and in all, the last 14 days, and each model. On a local model it counts tokens only.
 
 ![A project's usage: totals, the last 14 days, and tokens by kind and model](docs/screenshots/usage.png)
 
@@ -319,8 +319,7 @@ the queue, or add it to `.gitignore`.
 ## Good to know
 
 - **Billing.** On your subscription, Slop Factory ignores an `ANTHROPIC_API_KEY` in your
-  environment so you aren't billed for API use by accident. The Session panel shows which login is
-  in use. Anthropic's terms for using a subscription in other apps have changed over time; check
+  environment so you aren't billed for API use by accident. Anthropic's terms for using a subscription in other apps have changed over time; check
   the [Agent SDK help article](https://support.claude.com/en/articles/15036540) for the current
   position.
 - **Your settings** are kept in `~/.slop-factory`. Settings from earlier versions (`~/.claude-desk`)

@@ -72,15 +72,6 @@ export function renderGauges(p: Proj | undefined): void {
   host.replaceChildren(...rows);
 }
 
-const WINDOW: Record<string, string> = {
-  five_hour: '5-hour',
-  seven_day: 'weekly',
-  seven_day_opus: 'weekly Opus',
-  seven_day_sonnet: 'weekly Sonnet',
-  seven_day_overage_included: 'weekly',
-  overage: 'extra usage',
-};
-
 export const money = (n: number) => (n >= 100 ? `$${Math.round(n)}` : n >= 0.01 || n === 0 ? `$${n.toFixed(2)}` : '<$0.01');
 export function tokens(n: number): string {
   if (n < 1000) return String(n);
@@ -91,24 +82,6 @@ const minutes = (ms: number) => (ms < 60_000 ? `${Math.round(ms / 1000)}s` : ms 
 const isLocal = (p: Proj) => providerOf(p).kind !== 'subscription';
 
 /** "Today $1.20 · 48k tokens", or tokens alone for a local model, which costs nothing. */
-export function usageSummary(p: Proj): string | undefined {
-  const u = p.usage;
-  if (!u?.total.turns) return undefined;
-  const t = u.today;
-  const all = u.total.inputTokens + u.total.outputTokens + u.total.cacheReadTokens + u.total.cacheWriteTokens;
-  const today = t.inputTokens + t.outputTokens + t.cacheReadTokens + t.cacheWriteTokens;
-  if (isLocal(p)) return `Today ${tokens(today)} tokens · ${tokens(all)} all told`;
-  return `Today ${money(t.costUsd)} · ${money(u.total.costUsd)} all told`;
-}
-
-export function limitText(l: PlanLimit): string {
-  // A limit this version doesn't know by name is just "your usage limit".
-  const win = (l.window && WINDOW[l.window]) || 'usage';
-  const used = l.utilization != null ? `${Math.round(l.utilization * 100)}% of your ${win} limit used` : l.status === 'rejected' ? `${win} limit reached` : `Within your ${win} limit`;
-  const reset = l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
-  return used + reset;
-}
-
 export function openUsage(p: Proj): void {
   setDocsView({ project: p.dir, key: 'usage', requestId: '', tab: '', docs: [], usage: true });
   renderUsageView(p);
