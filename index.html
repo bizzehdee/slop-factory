@@ -33,6 +33,7 @@
           </div>
           <p id="project-path" class="project-path"></p>
           <p id="framework-badge" class="framework-badge"></p>
+          <p id="account-badge" class="framework-badge" hidden></p>
           <div id="git-status" class="git-status" aria-label="Git" hidden></div>
           <div id="framework-update" class="git-status framework-update" role="status" hidden></div>
         </div>
@@ -300,6 +301,23 @@
           <ul id="local-models" class="settings-list"></ul>
         </section>
 
+        <section class="settings-section" aria-labelledby="settings-accounts">
+          <h3 id="settings-accounts">Accounts</h3>
+          <p id="accounts-for" class="settings-note"></p>
+          <div id="account-project-row" class="field-row" hidden>
+            <label class="visually-hidden" for="account-picker">Account for this project</label>
+            <select id="account-picker"></select>
+          </div>
+          <ul id="accounts-list" class="settings-list"></ul>
+          <form id="account-form" class="field-row">
+            <label class="visually-hidden" for="account-name">Name for a new account</label>
+            <input id="account-name" type="text" maxlength="60" placeholder="Name a new account, e.g. Work" autocomplete="off" />
+            <button class="button" type="submit">Add account</button>
+          </form>
+          <p id="account-error" class="field-hint warn-text" role="alert" hidden></p>
+          <p class="settings-note">Each account is its own Claude login with its own conversations. Add one, sign it in, then pick it for a project. Removing an account here leaves its folder and history on disk.</p>
+        </section>
+
         <section class="settings-section" aria-labelledby="settings-mcp">
           <h3 id="settings-mcp">MCP servers</h3>
           <p class="settings-note">
@@ -375,6 +393,7 @@
         <p id="login-error" class="field-hint warn-text" role="alert" hidden></p>
         <div class="dialog-actions">
           <button id="login-local" class="button quiet" type="button">Use a local model instead</button>
+          <button id="login-cancel" class="button quiet" type="button" hidden>Cancel</button>
           <span class="spacer"></span>
           <button id="login-recheck" class="button quiet" type="button" title="Check again, e.g. after signing in with the claude command">Check again</button>
         </div>

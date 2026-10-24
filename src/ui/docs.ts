@@ -10,6 +10,7 @@ import { Proj, projects, send } from './state';
 import { renderSubagentView } from './subagents';
 import { renderChangesView } from './changes';
 import { renderUsageView } from './usage';
+import { renderConversationsView } from './conversations';
 import { renderWorkstreamsView } from './workstreams';
 import { renderUncommitted, type UncommittedView } from './git';
 
@@ -22,7 +23,7 @@ export interface PlainDoc {
   title: string;
 }
 export let docsView:
-  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string; changes?: string; usage?: boolean; workstreams?: boolean; uncommitted?: UncommittedView }
+  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string; changes?: string; usage?: boolean; sessions?: boolean; workstreams?: boolean; uncommitted?: UncommittedView }
   | undefined;
 export const setDocsView = (view: typeof docsView) => (docsView = view);
 
@@ -67,7 +68,7 @@ export function showProgress(p: Proj, item: BoardItem, openOn?: string): void {
 }
 
 export function refreshDocs(p: Proj): void {
-  if (!docsView || docsView.project !== p.dir || docsView.question || docsView.worktree || docsView.subagent || docsView.changes) return;
+  if (!docsView || docsView.project !== p.dir || docsView.question || docsView.worktree || docsView.subagent || docsView.changes || docsView.sessions) return;
   if (docsView.doc) {
     docsView.requestId = Math.random().toString(36).slice(2);
     send({ type: 'readDocs', project: p.dir, requestId: docsView.requestId, key: docsView.key, paths: [docsView.doc.rel] });
@@ -95,6 +96,7 @@ export function renderDocs(): void {
   if (docsView.subagent) return renderSubagentView(p);
   if (docsView.changes) return renderChangesView(p);
   if (docsView.usage) return renderUsageView(p);
+  if (docsView.sessions) return renderConversationsView(p);
   if (docsView.workstreams) return renderWorkstreamsView(p);
   if (docsView.uncommitted) return renderUncommitted(p);
   resetQuestionView();

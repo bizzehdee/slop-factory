@@ -1,5 +1,4 @@
 import {
-  getSubagentMessages,
   query,
   type Query,
   type SDKMessage,
@@ -13,6 +12,7 @@ import type { AskedQuestion, Attachment, Gauge, Gauges, SentAction, PermissionMo
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
+import { readSubagent } from './sessions.js';
 import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
 import { serverContextWindow } from './context.js';
@@ -97,13 +97,15 @@ export class AgentSession {
   onSession?: (id: string) => void;
   /** A turn ended: the conversation's running totals, for the usage ledger. */
   onUsage?: (sessionId: string, costUsd: number, models: Record<string, ModelTotals>, durationMs: number) => void;
+  /** Who Claude Code says it is signed in as, once a session has started. */
+  onAccount?: (info: { email?: string; organization?: string; plan?: string }) => void;
   private sessionId?: string;
 
   /** A subagent's transcript from Claude Code's files, for one the window didn't see live. */
   async subagentLog(agentId: string): Promise<ProjectEvent[]> {
     const id = this.sessionId ?? this.resume;
     if (!id) return [];
-    return messagesToEvents((await getSubagentMessages(id, agentId, { dir: this.cwd })) as Parameters<typeof messagesToEvents>[0]).map((e) => ({ ...e, agent: agentId }) as ProjectEvent);
+    return messagesToEvents((await readSubagent(id, agentId, this.cwd, this.provider.configDir)) as Parameters<typeof messagesToEvents>[0]).map((e) => ({ ...e, agent: agentId }) as ProjectEvent);
   }
 
   /** The models Claude Code offers on this login, once it has started. */
@@ -427,6 +429,12 @@ export class AgentSession {
           },
         });
         void this.q?.supportedCommands().then((c) => this.emitCommands(c), () => undefined);
+        if (this.provider.kind === 'subscription') {
+          void this.q?.accountInfo().then(
+            (a) => this.onAccount?.({ email: a.email, organization: a.organization, plan: a.subscriptionType }),
+            () => undefined,
+          );
+        }
         // Claude Code may start in a different mode than asked (auto mode can be unavailable).
         if (msg.permissionMode && msg.permissionMode !== this.permissionMode) {
           const asked = this.permissionMode;

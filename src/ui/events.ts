@@ -9,7 +9,7 @@ import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
 import { nextQueued, startFreed, waitingQueued, startQueued, trackLane } from './queue';
 import { applyTheme, onMcpServers, renderSettings, type Theme } from './settings';
-import { active, editorList, load, newProject, projects, providerList, receivePrefs, saveOpenProjects, setEditorList, setProviderList } from './state';
+import { active, editorList, setAccountList, load, newProject, projects, providerList, receivePrefs, saveOpenProjects, send, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
@@ -20,6 +20,8 @@ import { workstreamFile } from './workstreams';
 import { onGitChanges, renderGit, setFetchMinutes } from './git';
 import { reopenProjects } from './app';
 import { renderFramework } from './framework';
+import { renderAccountBadge, renderAccounts } from './accounts';
+import { renderConversationsView } from './conversations';
 
 // ---------- events ----------
 
@@ -32,6 +34,7 @@ export const setRestoreActive = (dir: string | null) => (restoreActive = dir);
 export function onEvent(e: SidecarEvent): void {
   switch (e.type) {
     case 'ready':
+      send({ type: 'listAccounts' });
       return;
     case 'providers':
       setProviderList(e.list);
@@ -59,6 +62,11 @@ export function onEvent(e: SidecarEvent): void {
       return;
     case 'mcpServers':
       return onMcpServers(e);
+    case 'accounts':
+      setAccountList(e.list);
+      renderAccounts(e.error);
+      renderAccountBadge();
+      return;
     case 'auth':
     case 'loginUrl':
     case 'loginLine':
@@ -135,6 +143,33 @@ export function onEvent(e: SidecarEvent): void {
     case 'git':
       p.git = e.info;
       if (isActive) renderGit();
+      return;
+    case 'account':
+      p.account = e.account;
+      if (isActive) {
+        renderAccountBadge();
+        if ($<HTMLDialogElement>('settings-dialog').open) renderAccounts();
+      }
+      return;
+    case 'sessions':
+      p.sessions = { list: e.list, error: e.error };
+      if (docsView?.project === p.dir && docsView.sessions) renderConversationsView(p);
+      return;
+    case 'conversationReset':
+      // Another conversation is showing: the transcript starts over, as when a window reloads.
+      p.liveText.clear();
+      p.toolCards.clear();
+      p.permissionCards.clear();
+      p.pending.clear();
+      p.asked.clear();
+      p.chatQuestions = [];
+      p.queuedTurns = [];
+      p.replaying = true;
+      emptyTranscript(p);
+      if (isActive) {
+        renderQuestions();
+        renderComposer();
+      }
       return;
     case 'models':
       p.models = { list: e.models, current: e.current, error: e.error };

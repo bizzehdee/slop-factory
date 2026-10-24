@@ -13,6 +13,8 @@ import { renderAttachments, renderSlashMenu } from './composer';
 import { openUsage, renderGauges } from './usage';
 import { renderGit } from './git';
 import { frameworkMenu, renderFramework } from './framework';
+import { accountMenu, renderAccountBadge } from './accounts';
+import { openConversations } from './conversations';
 
 // ---------- projects list ----------
 
@@ -159,7 +161,9 @@ export function projectMenu(p: Proj): MenuItem[] {
   const items: MenuItem[] = [
     { label: 'Open directory', run: () => send({ type: 'openFolder', project: p.dir }) },
     { label: 'Open with', submenu: editors },
+    { label: 'Conversations…', run: () => openConversations(p) },
     { label: 'New conversation', run: () => newConversation(p) },
+    ...accountMenu(p),
   ];
   if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
   items.push({ label: 'Usage', run: () => openUsage(p) });
@@ -195,6 +199,7 @@ export function renderHeader(): void {
       : '';
   badge.classList.toggle('warn-text', shadowed);
   document.title = `${p.name} – Slop Factory`;
+  renderAccountBadge();
   renderGit();
   renderFramework();
 }

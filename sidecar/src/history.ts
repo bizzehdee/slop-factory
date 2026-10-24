@@ -1,4 +1,4 @@
-import { getSessionMessages } from '@anthropic-ai/claude-agent-sdk';
+import { readMessages } from './sessions.js';
 import type { ProjectEvent } from './protocol.js';
 import { ATTACHED_FILE, attachedNames } from './attachments.js';
 
@@ -54,6 +54,6 @@ export function messagesToEvents(messages: StoredMessage[]): ProjectEvent[] {
   return out;
 }
 
-export async function loadHistory(sessionId: string, dir: string): Promise<ProjectEvent[]> {
-  return messagesToEvents((await getSessionMessages(sessionId, { dir })) as StoredMessage[]);
+export async function loadHistory(sessionId: string, dir: string, configDir?: string): Promise<ProjectEvent[]> {
+  return messagesToEvents((await readMessages(sessionId, dir, configDir)) as StoredMessage[]);
 }

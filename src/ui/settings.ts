@@ -4,6 +4,7 @@ import { $, h } from './dom';
 import { field, openProviderDialog } from './providers';
 import { active, load, projects, providerList, send, store } from './state';
 import { notificationsOn, setNotifications } from './notify';
+import { renderAccounts, wireAccounts } from './accounts';
 
 // ---------- settings ----------
 
@@ -27,6 +28,7 @@ export function openSettings(): void {
   closeMcpForm();
   renderSettings();
   send({ type: 'listMcp', project: active?.dir });
+  send({ type: 'listAccounts' });
   $<HTMLDialogElement>('settings-dialog').showModal();
 }
 
@@ -50,6 +52,7 @@ export function renderSettings(): void {
     $('task-start-default').textContent = `The default (${words})`;
     $<HTMLSelectElement>('task-start-project').value = p.taskStart ?? '';
   }
+  renderAccounts();
   $('model-for').textContent = p ? `The model ${p.name} uses. Switching starts a new conversation there.` : 'Open a project to choose its model.';
   $('local-models').replaceChildren(
     ...providerList
@@ -162,6 +165,7 @@ export function wireSettings(): void {
     store('slop-factory:theme', theme === 'system' ? null : theme);
     applyTheme(theme);
   });
+  wireAccounts();
   $('add-local-model').addEventListener('click', () => openProviderDialog());
   $('notify-toggle').addEventListener('change', (ev) => setNotifications((ev.target as HTMLInputElement).checked));
   $('task-start').addEventListener('change', (ev) => {

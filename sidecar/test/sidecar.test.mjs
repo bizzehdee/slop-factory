@@ -1212,3 +1212,81 @@ test('a project\'s agent-framework is checked against the app\'s copy, and upgra
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('accounts: each has its own folder, projects pick one, and each keeps its own conversation', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'desk-acct-'));
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
+  try {
+    const { ProviderStore, sessionSettings } = await import('../dist/providers.js');
+    const store = new ProviderStore();
+    await store.load();
+    assert.deepEqual(store.accountList().map((a) => a.id), ['default']);
+    assert.equal(store.forProject('/p').configDir, undefined);
+
+    const work = await store.addAccount('Work');
+    assert.equal(work.id, 'work');
+    assert.equal((await stat(work.dir)).isDirectory(), true);
+    await assert.rejects(store.addAccount('work'), /already an account/);
+
+    await store.setSession('/p', 'home-session');
+    await store.setProjectAccount('/p', 'work');
+    assert.equal(store.forProject('/p').configDir, work.dir);
+    assert.equal(store.sessionFor('/p'), undefined, 'a new login has its own conversations');
+    await store.setSession('/p', 'work-session');
+    assert.equal(sessionSettings(store.forProject('/p')).env.CLAUDE_CONFIG_DIR, work.dir);
+
+    // Back on the default login the first conversation is still there; the default can move.
+    await store.setProjectAccount('/p', null);
+    assert.equal(store.sessionFor('/p'), 'home-session');
+    assert.equal(store.entryFor('/p').followsDefault, true);
+    assert.equal(await store.setDefaultAccount('work'), true);
+    assert.equal(store.accountFor('/p').id, 'work');
+    assert.equal(store.sessionFor('/p'), 'work-session');
+
+    // Removing an account sends its projects back to the default, and keeps its folder.
+    await store.setProjectAccount('/q', 'work');
+    assert.deepEqual(await store.removeAccount('work'), ['/q']);
+    assert.equal(store.accountFor('/q').id, 'default');
+    assert.equal(store.defaultAccountId, 'default');
+    assert.equal((await stat(work.dir)).isDirectory(), true);
+
+    const again = new ProviderStore();
+    await again.load();
+    assert.deepEqual(again.accountList().map((a) => a.id), ['default']);
+  } finally {
+    delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("conversations are read from the login's own folder, and can be renamed, branched and deleted", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-sess-'));
+  try {
+    const { sessionList, renameConversation, forkConversation, deleteConversation } = await import('../dist/sessions.js');
+    const project = path.join(root, 'proj');
+    await mkdir(project, { recursive: true });
+    const encoded = project.replace(/[^a-zA-Z0-9]/g, '-');
+    const ids = { a: '11111111-1111-4111-8111-111111111111', b: '22222222-2222-4222-8222-222222222222' };
+    for (const [name, id] of Object.entries(ids)) {
+      const folder = path.join(root, name, 'projects', encoded);
+      await mkdir(folder, { recursive: true });
+      const line = { type: 'user', uuid: `u-${name}`, timestamp: new Date().toISOString(), cwd: project, sessionId: id, message: { role: 'user', content: `hello from ${name}` } };
+      await writeFile(path.join(folder, `${id}.jsonl`), JSON.stringify(line) + '\n');
+    }
+    const a = path.join(root, 'a');
+    const b = path.join(root, 'b');
+    // Asked together, each answer comes from its own login.
+    const [la, lb] = await Promise.all([sessionList(project, a, ids.a), sessionList(project, b)]);
+    assert.deepEqual(la.map((s) => [s.title, s.current]), [['hello from a', true]]);
+    assert.deepEqual(lb.map((s) => [s.title, s.current]), [['hello from b', false]]);
+
+    await renameConversation(ids.a, 'Renamed', project, a);
+    assert.equal((await sessionList(project, a))[0].title, 'Renamed');
+    const copy = await forkConversation(ids.a, project, a);
+    assert.equal((await sessionList(project, a)).length, 2);
+    await deleteConversation(copy, project, a);
+    assert.equal((await sessionList(project, a)).length, 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});

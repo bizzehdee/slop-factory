@@ -242,11 +242,34 @@ version is current. Then the button says **Restore**. **Check agent-framework** 
 menu fetches the latest agent-framework and checks straight away. Projects that don't use
 agent-framework are never checked.
 
+## Accounts
+
+If you have more than one Claude login, say a personal one and a work one, add them under
+**Settings → Accounts**: name the account, press **Sign in** and finish in the browser. Each account
+has its own Claude Code folder under `~/.slop-factory/accounts`, so its sign-in, conversations and
+limits stay separate. Then give each project its account, in Settings or from **Account** in the
+project menu, or leave it on the default, which you can change too. The account a project runs
+under, with the email and plan Claude Code reports for it, shows under the project's name.
+
+Each account keeps its own conversation for a project: switching a project from one to the other
+swaps the conversation with it, and switching back finds the first one where you left it. **This
+computer's login** is whatever Claude Code is already signed in as. Removing an account only
+forgets it here; its folder and history stay on disk. Accounts apply to Claude subscriptions and
+Console logins; local models don't use one.
+
+## Conversations
+
+**Conversations…** in the project menu lists everything the agent has been asked in a project under
+its current account, newest first. **Open** picks one up where it stopped, **Branch** starts a copy
+to carry on in while the original stays as it was, **Rename** gives it a name you'll recognise, and
+**Delete** removes one for good (not the one that's open). Opening or branching waits until the
+agent has finished its turn.
+
 ## The project menu
 
 The ⋯ beside the project's name opens its folder in your file manager, opens it in an editor
 (Visual Studio Code, Cursor, Zed, Sublime Text, IntelliJ IDEA, WebStorm or PyCharm, whichever are
-installed), shows the plan and the project's usage, checks whether its agent-framework is current, copies the path or
+installed), lists its conversations, picks its account, shows the plan and the project's usage, checks whether its agent-framework is current, copies the path or
 closes the project.
 
 ![The project menu with Open with listing the installed editors](docs/screenshots/project-menu.png)
@@ -273,6 +296,7 @@ The gear beside Projects opens Settings:
 - **Tasks:** where each task starts (as above), for every project and for the one that's open.
 - **Git:** how often open projects fetch from their remotes, or never.
 - **Model:** the model the current project uses, and your saved local models.
+- **Accounts:** your Claude logins, which one each project uses, and which is the default.
 - **MCP servers:** add, change or remove the tools and data sources the agent connects to, for all
   your projects, for one project and everyone who clones it, or for one project just for you.
   Changes apply the next time the agent starts in a project; **Restart it now** applies them at once.

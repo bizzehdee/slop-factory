@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ModelOption, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
+import type { AccountEntry, SessionEntry, AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ModelOption, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 import type { FileEdit } from './changes';
@@ -56,6 +56,8 @@ export interface Proj {
   usage?: ProjectUsage;
   git?: GitInfo;
   models?: { list: ModelOption[]; current: string | null; error?: string }; // what the model picker offers
+  account?: AccountEntry; // the login it runs under
+  sessions?: { list: SessionEntry[]; error?: string }; // its conversations, when the list has been asked for
   frameworkStatus?: FrameworkStatus; // whether its agent-framework is the current one
   gauges?: Gauges;
   taskStart?: TaskStart | null; // this project's own choice of where tasks start; null: the default
@@ -65,6 +67,7 @@ export interface Proj {
 
 export const projects = new Map<string, Proj>();
 export let editorList: EditorInfo[] = [];
+export let accountList: AccountEntry[] = [];
 export let providerList: ProviderConfig[] = [{ id: 'subscription', name: 'Claude subscription', kind: 'subscription' }];
 export const providerOf = (p: Proj) => providerList.find((x) => x.id === p.providerId) ?? providerList[0];
 export let active: Proj | undefined;
@@ -75,6 +78,7 @@ export const send = (cmd: UiCommand) => bridge?.send(cmd);
 // Other modules read these live; these setters are the only way to change them from outside.
 export const setActive = (p: Proj | undefined) => (active = p);
 export const setBridge = (b: Bridge) => (bridge = b);
+export const setAccountList = (list: AccountEntry[]) => (accountList = list);
 export const setProviderList = (list: ProviderConfig[]) => (providerList = list);
 export const setEditorList = (list: EditorInfo[]) => (editorList = list);
 

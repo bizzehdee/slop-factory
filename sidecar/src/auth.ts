@@ -25,9 +25,12 @@ export function claudeBinary(): string {
   return 'claude';
 }
 
-export async function authStatus(): Promise<AuthState> {
+/** The environment for the Claude Code binary under one login: its own config folder, or the computer's default. */
+const loginEnv = (configDir?: string) => (configDir ? { ...process.env, CLAUDE_CONFIG_DIR: configDir } : process.env);
+
+export async function authStatus(configDir?: string): Promise<AuthState> {
   try {
-    const { stdout } = await run(claudeBinary(), ['auth', 'status', '--json'], { timeout: 30_000, windowsHide: true });
+    const { stdout } = await run(claudeBinary(), ['auth', 'status', '--json'], { timeout: 30_000, windowsHide: true, env: loginEnv(configDir) });
     const json = JSON.parse(stdout);
     return { loggedIn: !!json.loggedIn, method: json.authMethod, provider: json.apiProvider };
   } catch (err) {
@@ -57,9 +60,9 @@ export class LoginFlow {
     private onExit: (ok: boolean, message?: string) => void,
   ) {}
 
-  start(console = false): void {
+  start(console = false, configDir?: string): void {
     this.cancel();
-    const child = spawn(claudeBinary(), ['auth', 'login', console ? '--console' : '--claudeai'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+    const child = spawn(claudeBinary(), ['auth', 'login', console ? '--console' : '--claudeai'], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: loginEnv(configDir) });
     this.child = child;
     let tail = '';
     let sentUrl = false;

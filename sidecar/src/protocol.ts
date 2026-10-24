@@ -14,6 +14,31 @@ export interface ProviderConfig {
   model?: string;
   smallModel?: string; // used for quick background calls; defaults to model
   contextTokens?: number; // the window the local server gives the model, asked for when a session starts (not stored)
+  configDir?: string; // the account's Claude Code folder, when the project isn't on the default login (not stored)
+}
+
+/** A Claude login the app can run projects under: Claude Code's own config folder, with its sign-in and history. */
+export interface AccountEntry {
+  id: string; // "default" is whatever Claude Code is signed in as on this computer
+  name: string;
+  email?: string; // known once a session has started under it
+  organization?: string;
+  plan?: string;
+  loggedIn?: boolean;
+  isDefault: boolean; // the one projects use unless they pick another
+  followsDefault?: boolean; // on a project's own entry: it hasn't picked a login, so it uses the default
+}
+
+/** One of a project's conversations, as Claude Code keeps them. */
+export interface SessionEntry {
+  id: string;
+  title: string;
+  firstPrompt?: string;
+  modified: number; // ms since the epoch
+  created?: number;
+  branch?: string;
+  tag?: string;
+  current: boolean; // the one the agent is in now
 }
 
 // ---------- UI -> sidecar ----------
@@ -57,7 +82,18 @@ export type UiCommand =
   | { type: 'openWith'; project: string; editor: string } // an EditorInfo id
   | { type: 'listEditors' }
   | { type: 'checkAuth' }
-  | { type: 'login'; console?: boolean } // console: an Anthropic Console account instead of a Claude subscription
+  | { type: 'login'; console?: boolean; account?: string } // console: an Anthropic Console account instead of a Claude subscription
+  | { type: 'listAccounts' }
+  | { type: 'addAccount'; name: string }
+  | { type: 'renameAccount'; id: string; name: string }
+  | { type: 'removeAccount'; id: string } // forgotten here; its folder and history are left alone
+  | { type: 'setDefaultAccount'; id: string }
+  | { type: 'setAccount'; project: string; account: string | null } // null: follow the default
+  | { type: 'listSessions'; project: string }
+  | { type: 'resumeSession'; project: string; sessionId: string }
+  | { type: 'renameSession'; project: string; sessionId: string; title: string }
+  | { type: 'forkSession'; project: string; sessionId: string }
+  | { type: 'deleteSession'; project: string; sessionId: string }
   | { type: 'loginCode'; code: string }
   | { type: 'cancelLogin' }
   | { type: 'openUrl'; url: string } // https only, in the default browser
@@ -440,6 +476,9 @@ export type ProjectEvent =
   | { type: 'replayDone' }
   | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string; action?: 'newConversation' } // action: a button beside the text
   | { type: 'models'; models: ModelOption[]; current: string | null; error?: string }
+  | { type: 'account'; account: AccountEntry } // the login this project runs under
+  | { type: 'sessions'; list: SessionEntry[]; error?: string }
+  | { type: 'conversationReset' } // another conversation is showing: what follows replaces the transcript
 
 /** Events not tied to one project. */
 export type GlobalEvent =
@@ -448,6 +487,7 @@ export type GlobalEvent =
   | { type: 'probe'; requestId: string; ok: boolean; models: string[]; error?: string }
   | { type: 'editors'; list: EditorInfo[] }
   | { type: 'auth'; state: AuthState }
+  | { type: 'accounts'; list: AccountEntry[]; error?: string }
   | { type: 'mcpServers'; project?: string; list: McpEntry[]; error?: string } // error: the change asked for failed
   | { type: 'loginUrl'; url: string }
   | { type: 'loginLine'; line: string }

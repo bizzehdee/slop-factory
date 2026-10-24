@@ -921,3 +921,88 @@ test('the model can be switched, earlier versions too, and the choice sticks; Ne
   await page.waitForFunction(() => document.querySelector('#model-picker').value === 'default');
   assert.deepEqual(page.errors, []);
 });
+
+test('another account can be added, signed in and picked for a project, each keeping its own conversation', async () => {
+  const dir = await app.project();
+  let page = await app.open(dir);
+  await page.waitForSelector('#account-badge:has-text("default@example.test")');
+  // Say something under the default account.
+  await page.fill('#prompt', 'Hello from home');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Hello from home")');
+
+  await page.click('#open-settings');
+  await page.fill('#account-name', 'Work');
+  await page.click('#account-form button:has-text("Add account")');
+  await page.waitForSelector('#accounts-list li:has-text("Work"):has-text("not signed in")');
+  await page.click('#accounts-list li:has-text("Work") button:has-text("Sign in")');
+  await page.waitForSelector('#login-title:has-text("Sign in to Work")');
+  await page.click('#login-go');
+  await page.waitForSelector('#login-dialog', { state: 'hidden' });
+  await page.waitForFunction(() => !document.querySelector('#accounts-list').textContent.includes('not signed in'));
+
+  // Pick it for this project: a new conversation, under that login.
+  await page.selectOption('#account-picker', { label: 'Work' });
+  await page.click('#settings-close');
+  await page.waitForSelector('.notice:has-text("Now using Work")');
+  await page.waitForSelector('#account-badge:has-text("Work · work@example.test")');
+  assert.equal(await page.locator('.msg.assistant:has-text("Hello from home")').count(), 0);
+  await page.fill('#prompt', 'Hello from work');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Hello from work")');
+
+  // The choice sticks over a restart.
+  await page.close();
+  await app.restartSidecar();
+  page = await app.open(dir);
+  await page.waitForSelector('#account-badge:has-text("Work")');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Hello from work")');
+
+  // Back to the default: its own conversation is there again.
+  await page.click('#project-menu');
+  await page.hover('.menu-item:has-text("Account")');
+  await page.click('.menu-item:has-text("Follow the default account")');
+  await page.waitForSelector('.notice:has-text("Now using This computer")');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Hello from home")');
+  assert.equal(await page.locator('.msg.assistant:has-text("Done: Hello from work")').count(), 0);
+  assert.deepEqual(page.errors, []);
+});
+
+test("a project's conversations can be listed, reopened, branched, renamed and deleted", async () => {
+  const dir = await app.project();
+  const page = await app.open(dir);
+  await page.fill('#prompt', 'First conversation');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("Done: First conversation")');
+  await page.click('#new-conversation');
+  await page.waitForSelector('.notice:has-text("Started a new conversation.")');
+  await page.fill('#prompt', 'Second conversation');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Second conversation")');
+
+  await page.click('#project-menu');
+  await page.click('.menu-item:has-text("Conversations")');
+  await page.waitForSelector('.session-row.current:has-text("Second conversation")');
+  assert.equal(await page.locator('.session-row').count(), 2);
+
+  // Open the first: the transcript is that conversation's.
+  await page.click('.session-row:has-text("First conversation") button:has-text("Open")');
+  await page.waitForSelector('.notice:has-text("Opened that conversation")');
+  await page.waitForSelector('.session-row.current:has-text("First conversation")');
+  assert.equal(await page.locator('#transcripts .msg.user:has-text("Second conversation")').count(), 0);
+  await page.waitForSelector('#transcripts .msg.assistant:has-text("Done: First conversation")');
+
+  // Branch it, then rename the copy.
+  await page.click('.session-row.current button:has-text("Branch")');
+  await page.waitForSelector('.notice:has-text("Branched that conversation")');
+  await page.waitForFunction(() => document.querySelectorAll('.session-row').length === 3);
+  page.once('dialog', (d) => d.accept('The branch'));
+  await page.click('.session-row.current button:has-text("Rename")');
+  await page.waitForSelector('.session-row.current:has-text("The branch")');
+
+  // Delete one that isn't open.
+  page.once('dialog', (d) => d.accept());
+  await page.click('.session-row:has-text("Second conversation") button:has-text("Delete")');
+  await page.waitForFunction(() => document.querySelectorAll('.session-row').length === 2);
+  assert.deepEqual(page.errors, []);
+});

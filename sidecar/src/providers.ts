@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { PermissionModeName, ProviderConfig, TaskStart } from './protocol.js';
+import type { AccountEntry, PermissionModeName, ProviderConfig, TaskStart } from './protocol.js';
 
 // Where model providers live. Each project remembers which one it uses.
 // Claude Code talks to any server that speaks Anthropic's Messages API (/v1/messages),
@@ -29,7 +29,20 @@ interface DeskState {
   projectTaskStart?: Record<string, TaskStart>; // projects whose tasks start differently from the default
   projectModel?: Record<string, { provider: string; model: string }>; // the model each project picked, on the provider it was picked for
   frameworkDismissed?: Record<string, string>; // the agent-framework version each project said "not now" to
+  accounts?: StoredAccount[]; // Claude logins besides the one on this computer
+  defaultAccount?: string;
+  projectAccount?: Record<string, string>; // the login each project picked
+  accountInfo?: Record<string, { email?: string; organization?: string; plan?: string }>; // what Claude Code said each login is, as of the last session
 }
+
+export interface StoredAccount {
+  id: string;
+  name: string;
+  dir: string; // its Claude Code config folder
+}
+
+export const DEFAULT_ACCOUNT = 'default';
+const DEFAULT_NAME = 'This computer’s login';
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
 const TASK_STARTS: TaskStart[] = ['current', 'compact', 'new'];
@@ -58,6 +71,10 @@ export class ProviderStore {
         projectTaskStart: raw.projectTaskStart && typeof raw.projectTaskStart === 'object' ? Object.fromEntries(Object.entries(raw.projectTaskStart).filter(([, v]) => TASK_STARTS.includes(v as TaskStart))) as Record<string, TaskStart> : undefined,
         projectModel: raw.projectModel && typeof raw.projectModel === 'object' ? Object.fromEntries(Object.entries(raw.projectModel).filter(([, v]) => !!v && typeof (v as { provider?: unknown }).provider === 'string' && typeof (v as { model?: unknown }).model === 'string')) as Record<string, { provider: string; model: string }> : undefined,
         frameworkDismissed: raw.frameworkDismissed && typeof raw.frameworkDismissed === 'object' ? Object.fromEntries(Object.entries(raw.frameworkDismissed).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
+        accounts: Array.isArray(raw.accounts) ? raw.accounts.filter((a: StoredAccount) => !!a && typeof a.id === 'string' && typeof a.name === 'string' && typeof a.dir === 'string') : undefined,
+        defaultAccount: typeof raw.defaultAccount === 'string' ? raw.defaultAccount : undefined,
+        projectAccount: raw.projectAccount && typeof raw.projectAccount === 'object' ? Object.fromEntries(Object.entries(raw.projectAccount).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
+        accountInfo: raw.accountInfo && typeof raw.accountInfo === 'object' ? raw.accountInfo : undefined,
         prefs: raw.prefs && typeof raw.prefs === 'object' ? Object.fromEntries(Object.entries(raw.prefs).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
       };
     } catch {
@@ -77,7 +94,107 @@ export class ProviderStore {
   forProject(dir: string): ProviderConfig {
     const p = this.get(this.state.projectProvider[dir]);
     const model = this.modelFor(dir, p.id);
-    return model ? { ...p, model } : p;
+    const configDir = this.accountFor(dir).dir;
+    return { ...p, ...(model ? { model } : {}), ...(configDir ? { configDir } : {}) };
+  }
+
+  // ---------- accounts ----------
+
+  private stored(id: string): StoredAccount | undefined {
+    return (this.state.accounts ?? []).find((a) => a.id === id);
+  }
+
+  /** The default login first, then the ones added here. */
+  accountList(): AccountEntry[] {
+    const info = this.state.accountInfo ?? {};
+    const defaultId = this.defaultAccountId;
+    const entry = (id: string, name: string): AccountEntry => ({ id, name, ...info[id], isDefault: id === defaultId });
+    return [entry(DEFAULT_ACCOUNT, DEFAULT_NAME), ...(this.state.accounts ?? []).map((a) => entry(a.id, a.name))];
+  }
+
+  get defaultAccountId(): string {
+    const id = this.state.defaultAccount;
+    return id && this.stored(id) ? id : DEFAULT_ACCOUNT;
+  }
+
+  /** The login a project runs under; dir is undefined for the one on this computer. */
+  accountFor(project: string): { id: string; name: string; dir?: string } {
+    const picked = this.state.projectAccount?.[project];
+    const a = this.stored(picked && this.stored(picked) ? picked : this.defaultAccountId);
+    return a ?? { id: DEFAULT_ACCOUNT, name: DEFAULT_NAME };
+  }
+
+  account(id: string): { id: string; name: string; dir?: string } | undefined {
+    return id === DEFAULT_ACCOUNT ? { id, name: DEFAULT_NAME } : this.stored(id);
+  }
+
+  entryFor(project: string): AccountEntry {
+    const id = this.accountFor(project).id;
+    return { ...this.accountList().find((a) => a.id === id)!, followsDefault: this.follows(project) };
+  }
+
+  async addAccount(name: string): Promise<StoredAccount> {
+    const clean = name.trim().slice(0, 60);
+    if (!clean) throw new Error('Give the account a name.');
+    if (this.accountList().some((a) => a.name.toLowerCase() === clean.toLowerCase())) throw new Error(`There is already an account called ${clean}.`);
+    const base = clean.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'account';
+    let id = base;
+    for (let n = 2; id === DEFAULT_ACCOUNT || this.stored(id); n++) id = `${base}-${n}`;
+    const dir = path.join(configDir(), 'accounts', id);
+    await fs.mkdir(dir, { recursive: true });
+    const a = { id, name: clean, dir };
+    this.state.accounts = [...(this.state.accounts ?? []), a];
+    await this.save();
+    return a;
+  }
+
+  async renameAccount(id: string, name: string): Promise<void> {
+    const a = this.stored(id);
+    const clean = name.trim().slice(0, 60);
+    if (!a || !clean) return;
+    a.name = clean;
+    await this.save();
+  }
+
+  /** Forgotten here only: its folder, sign-in and conversations stay where they are. */
+  async removeAccount(id: string): Promise<string[]> {
+    if (!this.stored(id)) return [];
+    this.state.accounts = (this.state.accounts ?? []).filter((a) => a.id !== id);
+    const moved = Object.entries(this.state.projectAccount ?? {}).filter(([, v]) => v === id).map(([k]) => k);
+    for (const dir of moved) delete this.state.projectAccount![dir];
+    if (this.state.defaultAccount === id) delete this.state.defaultAccount;
+    if (this.state.accountInfo) delete this.state.accountInfo[id];
+    await this.save();
+    return moved;
+  }
+
+  /** Whether the default changed. */
+  async setDefaultAccount(id: string): Promise<boolean> {
+    if (!this.account(id)) return false;
+    const before = this.defaultAccountId;
+    if (id === DEFAULT_ACCOUNT) delete this.state.defaultAccount;
+    else this.state.defaultAccount = id;
+    await this.save();
+    return before !== this.defaultAccountId;
+  }
+
+  follows(project: string): boolean {
+    const picked = this.state.projectAccount?.[project];
+    return !picked || !this.stored(picked);
+  }
+
+  async setProjectAccount(project: string, id: string | null): Promise<void> {
+    const map = (this.state.projectAccount ??= {});
+    if (id && this.account(id)) map[project] = id;
+    else delete map[project];
+    await this.save();
+  }
+
+  async cacheAccountInfo(id: string, info: { email?: string; organization?: string; plan?: string }): Promise<void> {
+    const have = (this.state.accountInfo ??= {});
+    const same = JSON.stringify(have[id]) === JSON.stringify(info);
+    have[id] = info;
+    if (!same) await this.save();
   }
 
   async setForProject(dir: string, id: string): Promise<ProviderConfig> {
@@ -90,13 +207,19 @@ export class ProviderStore {
 
   /** The conversation a project picks up when it opens again. */
   sessionFor(dir: string): string | undefined {
-    return this.state.projectSession[dir];
+    return this.state.projectSession[this.sessionKey(dir)];
   }
 
-  async setSession(dir: string, id: string | undefined): Promise<void> {
-    if (this.state.projectSession[dir] === id) return;
-    if (id) this.state.projectSession[dir] = id;
-    else delete this.state.projectSession[dir];
+  /** Each login keeps its own conversations, so a project remembers one per login. */
+  private sessionKey(dir: string, account = this.accountFor(dir).id): string {
+    return account === DEFAULT_ACCOUNT ? dir : `${dir}\n${account}`;
+  }
+
+  async setSession(dir: string, id: string | undefined, account?: string): Promise<void> {
+    const key = this.sessionKey(dir, account);
+    if (this.state.projectSession[key] === id) return;
+    if (id) this.state.projectSession[key] = id;
+    else delete this.state.projectSession[key];
     await this.save();
   }
 
@@ -273,11 +396,14 @@ function isProvider(x: unknown): x is ProviderConfig {
  * Local: point every model role at the chosen model so nothing tries to reach Anthropic.
  */
 export function sessionSettings(p: ProviderConfig): { env?: Record<string, string | undefined>; model?: string } {
-  if (p.kind === 'subscription') return p.model ? { model: p.model } : {};
+  // Another login: its own Claude Code folder, with its sign-in and history.
+  const account = p.configDir ? { CLAUDE_CONFIG_DIR: p.configDir } : {};
+  if (p.kind === 'subscription') return { ...(p.configDir ? { env: { ...process.env, ...account } } : {}), ...(p.model ? { model: p.model } : {}) };
   if (!p.baseUrl || !p.model) return {};
   const small = p.smallModel || p.model;
   const env: Record<string, string | undefined> = {
     ...process.env,
+    ...account,
     ANTHROPIC_BASE_URL: p.baseUrl,
     ANTHROPIC_AUTH_TOKEN: p.authToken || 'local',
     ANTHROPIC_MODEL: p.model,

@@ -2,16 +2,17 @@
 // all running at once. Speaks newline-delimited JSON on stdin (commands) and stdout (events).
 import { createInterface } from 'node:readline';
 import { spawn } from 'node:child_process';
-import { readFileSync, promises as fs } from 'node:fs';
+import { existsSync, readFileSync, promises as fs } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { AgentSession } from './agent.js';
-import { FakeSession } from './fake-agent.js';
+import { FakeSession, fakeDelete, fakeFork, fakeRename, fakeSessions } from './fake-agent.js';
+import { deleteConversation, forkConversation, renameConversation, sessionList } from './sessions.js';
 import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
 import { DEFAULT_PROMPTS, Priorities, planPrompt, promptFor, workstreamsPrompt, type DeskPrompts } from './actions.js';
-import { ProviderStore, probeModels } from './providers.js';
+import { DEFAULT_ACCOUNT, ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
@@ -24,7 +25,7 @@ import { FrameworkMonitor } from './frameworkupdate.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
-import type { ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
+import type { AccountEntry, ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
 
 fixPath();
 
@@ -59,7 +60,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'models', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'models', 'account', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -94,12 +95,29 @@ async function withContext(provider: ProviderConfig): Promise<ProviderConfig> {
 
 function newSession(dir: string, mode: PermissionModeName, out: (e: ProjectEvent) => void, provider: ProviderConfig, resume?: string): Session {
   const s = FAKE_AGENT ? new FakeSession(dir, mode, out, provider, resume) : new AgentSession(dir, mode, out, provider, resume);
-  s.onSession = (id) => void providers.setSession(dir, id).catch(() => undefined);
+  // The login it started under keeps the conversation, even if the project moves to another meanwhile.
+  const account = providers.accountFor(dir).id;
+  s.onSession = (id) => void providers.setSession(dir, id, account).catch(() => undefined);
+  s.onAccount = (info) =>
+    void providers
+      .cacheAccountInfo(account, info)
+      .then(async () => {
+        if (providers.accountFor(dir).id === account) out({ type: 'account', account: providers.entryFor(dir) });
+        emit({ type: 'accounts', list: await accountList() });
+      })
+      .catch(() => undefined);
   s.onUsage = (id, cost, models, ms) => void usage.record(dir, id, cost, models, ms).then((u) => out({ type: 'usage', usage: u }), () => undefined);
   return s;
 }
-const loadConversation = (id: string, dir: string) => (FAKE_AGENT ? Promise.resolve(FakeSession.history(id)) : loadHistory(id, dir));
-const checkAuth = () => (FAKE_AGENT ? Promise.resolve({ loggedIn: true, method: 'fake' }) : authStatus());
+const loadConversation = (id: string, dir: string, login?: string) => (FAKE_AGENT ? Promise.resolve(FakeSession.history(id, login)) : loadHistory(id, dir, login));
+// The tests have no real logins: another account counts as signed in once its sign-in has been "done".
+const checkAuth = (login?: string) => (FAKE_AGENT ? Promise.resolve({ loggedIn: !login || existsSync(path.join(login, '.fake-login')), method: 'fake' }) : authStatus(login));
+
+/** The logins the app knows, each with whether it's signed in. */
+async function accountList(): Promise<AccountEntry[]> {
+  return Promise.all(providers.accountList().map(async (a) => ({ ...a, loggedIn: (await checkAuth(providers.account(a.id)?.dir)).loggedIn })));
+}
+const emitAccounts = async (error?: string) => emit({ type: 'accounts', list: await accountList(), ...(error ? { error } : {}) });
 const providers = new ProviderStore();
 const usage = new UsageLedger();
 
@@ -171,6 +189,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const provider = await withContext(providers.forProject(dir));
   const projectEvent: ProjectEvent = { type: 'project', dir, name: path.basename(dir), framework, taskGlobs: config.taskGlobs, permissionMode: mode, providerId: provider.id };
   out(projectEvent);
+  out({ type: 'account', account: providers.entryFor(dir) });
   const { problem } = await loadProjectSettings(dir);
   if (problem) out({ type: 'notice', level: 'warn', text: `${problem} Fix it and reopen the project.` });
 
@@ -183,7 +202,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
   // Pick up the project's last conversation, showing what it said before.
   const previous = providers.sessionFor(dir);
-  const history = previous ? await loadConversation(previous, dir).catch(() => []) : [];
+  const history = previous ? await loadConversation(previous, dir, provider.configDir).catch(() => []) : [];
   for (const e of history) out(e);
   if (history.length) out({ type: 'notice', level: 'info', text: 'Picked up where you left off.', action: 'newConversation' });
   const session = newSession(dir, mode, out, provider, history.length ? previous : undefined);
@@ -341,14 +360,71 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   });
 }
 
+/** Show another of a project's conversations (or an empty one) and carry on in it. */
+async function openConversation(p: Project, sessionId: string | undefined, note: string): Promise<void> {
+  const mode = p.session.mode;
+  const provider = await withContext(providers.forProject(p.dir));
+  const history = sessionId ? await loadConversation(sessionId, p.dir, provider.configDir).catch(() => []) : [];
+  p.session.close();
+  await providers.setSession(p.dir, sessionId);
+  p.transcript.splice(0);
+  p.out({ type: 'conversationReset' });
+  for (const e of history) p.out(e);
+  p.out({ type: 'replayDone' });
+  p.session = newSession(p.dir, mode, p.out, provider, history.length ? sessionId : undefined);
+  p.session.processes.clear();
+  p.session.start();
+  p.latest.delete('session');
+  p.out({ type: 'busy', busy: false });
+  void sendModels(p);
+  p.out({ type: 'notice', level: 'info', text: note });
+}
+
+/** A project moves to another login: its own conversation there, if it has one, and its own sign-in. */
+async function switchAccount(p: Project, account: string | null): Promise<void> {
+  const before = providers.accountFor(p.dir).id;
+  await providers.setProjectAccount(p.dir, account);
+  const now = providers.entryFor(p.dir);
+  p.out({ type: 'account', account: now });
+  if (now.id === before) return;
+  const name = providers.accountFor(p.dir).name;
+  const signedIn = (await checkAuth(providers.accountFor(p.dir).dir)).loggedIn;
+  await openConversation(p, providers.sessionFor(p.dir), `Now using ${name}. ${providers.sessionFor(p.dir) ? 'Its last conversation here carries on.' : 'This starts a new conversation, as each login keeps its own.'}${signedIn ? '' : ' It isn’t signed in yet: sign in under Settings → Accounts.'}`);
+}
+
+const listing = (p: Project) => {
+  const login = providers.accountFor(p.dir).dir;
+  return { login, current: providers.sessionFor(p.dir) };
+};
+
+async function sendSessions(p: Project): Promise<void> {
+  const { login, current } = listing(p);
+  try {
+    p.out({ type: 'sessions', list: FAKE_AGENT ? fakeSessions(p.dir, login, current) : await sessionList(p.dir, login, current) });
+  } catch (err) {
+    p.out({ type: 'sessions', list: [], error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
 const login = new LoginFlow(
   (url) => emit({ type: 'loginUrl', url }),
   (line) => emit({ type: 'loginLine', line }),
   async (ok, error) => {
     emit({ type: 'loginDone', ok, error });
     emit({ type: 'auth', state: await checkAuth() });
+    await emitAccounts();
+    if (ok) await restartSignedIn(signingIn);
   },
 );
+let signingIn: string | undefined; // the login being signed in, when it isn't the default
+
+/** Projects on a login that has just signed in start their agent again, now that it can work. */
+async function restartSignedIn(account: string | undefined): Promise<void> {
+  for (const p of projects.values()) {
+    if (providers.accountFor(p.dir).id !== (account ?? DEFAULT_ACCOUNT) || p.session.busy) continue;
+    await restartSession(p, false, 'Signed in. The agent has started again.');
+  }
+}
 
 /** Show a folder in Finder, Explorer or the desktop's file manager, or a web page in the browser. */
 function openInFileManager(dir: string): Promise<void> {
@@ -413,8 +489,85 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'checkAuth':
       emit({ type: 'auth', state: await checkAuth() });
       return;
-    case 'login':
-      return login.start(cmd.console);
+    case 'login': {
+      const account = cmd.account && cmd.account !== DEFAULT_ACCOUNT ? providers.account(cmd.account) : undefined;
+      if (cmd.account && cmd.account !== DEFAULT_ACCOUNT && !account) throw new Error('That account is gone.');
+      signingIn = account?.id;
+      if (!FAKE_AGENT) return login.start(cmd.console, account?.dir);
+      // The tests don't open a browser: signing in is a file in the account's folder.
+      if (account) await fs.writeFile(path.join(account.dir!, '.fake-login'), '');
+      emit({ type: 'loginDone', ok: true });
+      emit({ type: 'auth', state: await checkAuth() });
+      await emitAccounts();
+      return restartSignedIn(signingIn);
+    }
+    case 'listAccounts':
+      return emitAccounts();
+    case 'addAccount':
+      try {
+        await providers.addAccount(cmd.name);
+      } catch (err) {
+        return emitAccounts(err instanceof Error ? err.message : String(err));
+      }
+      return emitAccounts();
+    case 'renameAccount':
+      await providers.renameAccount(cmd.id, cmd.name);
+      for (const p of projects.values()) p.out({ type: 'account', account: providers.entryFor(p.dir) });
+      return emitAccounts();
+    case 'removeAccount': {
+      const moved = (await providers.removeAccount(cmd.id)).filter((d) => projects.has(d));
+      const follow = [...projects.values()].filter((p) => !moved.includes(p.dir));
+      for (const dir of moved) await openConversation(need(dir), providers.sessionFor(dir), `That account was removed. Now using ${providers.accountFor(dir).name}.`);
+      for (const p of follow) p.out({ type: 'account', account: providers.entryFor(p.dir) });
+      return emitAccounts();
+    }
+    case 'setDefaultAccount': {
+      const before = new Map([...projects.values()].filter((p) => providers.follows(p.dir)).map((p) => [p.dir, providers.accountFor(p.dir).id]));
+      if (!(await providers.setDefaultAccount(cmd.id))) return emitAccounts();
+      // Projects that follow the default move with it.
+      for (const [dir, was] of before) {
+        const p = need(dir);
+        p.out({ type: 'account', account: providers.entryFor(dir) });
+        if (providers.accountFor(dir).id !== was) await openConversation(p, providers.sessionFor(dir), `The default account is now ${providers.accountFor(dir).name}, so this project uses it.`);
+      }
+      return emitAccounts();
+    }
+    case 'setAccount':
+      return switchAccount(need(cmd.project), cmd.account);
+    case 'listSessions':
+      return sendSessions(need(cmd.project));
+    case 'resumeSession': {
+      const p = need(cmd.project);
+      if (p.session.busy) return p.out({ type: 'notice', level: 'warn', text: 'The agent is working. Stop it, or wait for it to finish, before opening another conversation.' });
+      await openConversation(p, cmd.sessionId, 'Opened that conversation. It carries on from here.');
+      return sendSessions(p);
+    }
+    case 'renameSession': {
+      const p = need(cmd.project);
+      const title = cmd.title.trim().slice(0, 200);
+      if (title) {
+        const { login: dirOf } = listing(p);
+        if (FAKE_AGENT) fakeRename(cmd.sessionId, title, dirOf);
+        else await renameConversation(cmd.sessionId, title, p.dir, dirOf);
+      }
+      return sendSessions(p);
+    }
+    case 'forkSession': {
+      const p = need(cmd.project);
+      if (p.session.busy) return p.out({ type: 'notice', level: 'warn', text: 'The agent is working. Stop it, or wait for it to finish, before branching a conversation.' });
+      const { login: dirOf } = listing(p);
+      const copy = FAKE_AGENT ? fakeFork(cmd.sessionId, dirOf) : await forkConversation(cmd.sessionId, p.dir, dirOf);
+      await openConversation(p, copy, 'Branched that conversation. This is the copy, so the original stays as it was.');
+      return sendSessions(p);
+    }
+    case 'deleteSession': {
+      const p = need(cmd.project);
+      const { login: dirOf, current } = listing(p);
+      if (cmd.sessionId === current) return p.out({ type: 'notice', level: 'warn', text: 'That is the conversation open now. Open another, or start a new one, before deleting it.' });
+      if (FAKE_AGENT) fakeDelete(cmd.sessionId, dirOf);
+      else await deleteConversation(cmd.sessionId, p.dir, dirOf);
+      return sendSessions(p);
+    }
     case 'loginCode':
       return login.sendCode(cmd.code);
     case 'cancelLogin':

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
 import { serverContextWindow } from './context.js';
 import { configDir } from './names.js';
-import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig, SessionEntry } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 
@@ -19,6 +19,34 @@ import { ProcessTracker } from './processes.js';
 //   "slow"         takes a few seconds, so a test can press Stop
 //   "edit"         adds a line to notes.txt in the project, with a checkpoint to undo it
 //   anything else  replies "Done: <first line of the message>"
+
+// Its conversations are kept like Claude Code's, one file each in a login's folder, with a first line
+// saying which project they are for.
+const fakeStore = (login?: string) => path.join(login ?? configDir(), 'fake-sessions');
+
+export function fakeSessions(project: string, login: string | undefined, current?: string): SessionEntry[] {
+  const dir = fakeStore(login);
+  if (!existsSync(dir)) return [];
+  const list: SessionEntry[] = [];
+  for (const file of readdirSync(dir).filter((f) => f.endsWith('.jsonl'))) {
+    const lines = readFileSync(path.join(dir, file), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as { type: string; cwd?: string; customTitle?: string; message?: { content?: unknown } });
+    if (lines[0]?.cwd !== project) continue;
+    const first = lines.find((l) => l.type === 'user');
+    const prompt = typeof first?.message?.content === 'string' ? first.message.content : '';
+    const id = file.replace(/\.jsonl$/, '');
+    const title = [...lines].reverse().find((l) => l.customTitle)?.customTitle ?? (prompt || 'Untitled');
+    list.push({ id, title, firstPrompt: prompt || undefined, modified: statSync(path.join(dir, file)).mtimeMs, current: id === current });
+  }
+  return list.sort((a, b) => b.modified - a.modified);
+}
+
+export const fakeRename = (id: string, title: string, login?: string) => appendFileSync(path.join(fakeStore(login), `${id}.jsonl`), JSON.stringify({ type: 'system', customTitle: title }) + '\n');
+export const fakeDelete = (id: string, login?: string) => rmSync(path.join(fakeStore(login), `${id}.jsonl`), { force: true });
+export function fakeFork(id: string, login?: string): string {
+  const copy = randomUUID();
+  copyFileSync(path.join(fakeStore(login), `${id}.jsonl`), path.join(fakeStore(login), `${copy}.jsonl`));
+  return copy;
+}
 
 export const ASKED: AskedQuestion[] = [
   {
@@ -71,9 +99,9 @@ export class FakeSession {
   }
 
   /** Its conversations are kept like Claude Code's, one file each, so they can be picked up. */
-  static history(id: string): ProjectEvent[] {
+  static history(id: string, login?: string): ProjectEvent[] {
     try {
-      const lines = readFileSync(path.join(configDir(), 'fake-sessions', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean);
+      const lines = readFileSync(path.join(fakeStore(login), `${id}.jsonl`), 'utf8').split('\n').filter(Boolean);
       return messagesToEvents(lines.map((l) => JSON.parse(l)));
     } catch {
       return [];
@@ -81,8 +109,10 @@ export class FakeSession {
   }
 
   private record(type: 'user' | 'assistant', text: string | unknown[]): void {
-    const dir = path.join(configDir(), 'fake-sessions');
+    const dir = fakeStore(this.provider.configDir);
     mkdirSync(dir, { recursive: true });
+    const file = path.join(dir, `${this.sessionId}.jsonl`);
+    if (!existsSync(file)) appendFileSync(file, JSON.stringify({ type: 'system', cwd: this.cwd }) + '\n');
     const message = type === 'user' ? { role: 'user', content: text } : { role: 'assistant', content: [{ type: 'text', text }] };
     appendFileSync(path.join(dir, `${this.sessionId}.jsonl`), JSON.stringify({ type, uuid: randomUUID(), message, parent_tool_use_id: null }) + '\n');
   }
@@ -104,9 +134,12 @@ export class FakeSession {
     this.emitSession();
   }
 
+  onAccount?: (info: { email?: string; organization?: string; plan?: string }) => void;
+
   start(): void {
     this.sessionId = this.resume ?? randomUUID();
     this.onSession?.(this.sessionId);
+    if (this.provider.kind === 'subscription') this.onAccount?.({ email: `${path.basename(this.provider.configDir ?? 'default')}@example.test`, plan: 'max' });
     this.emitSession();
   }
 
