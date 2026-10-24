@@ -1864,6 +1864,28 @@ textarea {
   padding: 12px 20px;
   border-top: 1px solid var(--line);
 }
+.agent-say {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.agent-say textarea {
+  width: 100%;
+  resize: vertical;
+  font: inherit;
+}
+.agent-say-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.agent-back {
+  margin-left: auto;
+}
+.agent-say p {
+  margin: 0;
+}
 .docs-actions:empty {
   display: none;
 }

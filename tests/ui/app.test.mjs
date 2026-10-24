@@ -281,6 +281,23 @@ test("a subagent's own transcript can be watched live, and read again after a re
   await page.waitForSelector('.agent-text:has-text("All done")');
 });
 
+test('a subagent can be messaged through the main agent, and the main agent is one click back', async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Run a slow subagent on this');
+  await page.keyboard.press('Enter');
+  await page.click('.proc.live:has-text("Work in a worktree") button:has-text("View")');
+  await page.waitForSelector('#docs-ref:has-text("Subagent · working")');
+  await page.fill('.agent-say textarea', 'Skip the lint step');
+  await page.click('.agent-say button:has-text("Send to subagent")');
+  // It goes to the main agent to pass on, naming the subagent, and shows in the subagent's own view.
+  await page.waitForSelector('.msg.user:has-text("Skip the lint step")');
+  assert.match(await page.textContent('.msg.user:has-text("Skip the lint step")'), /Work in a worktree.*SendMessage/s);
+  await page.waitForSelector('.agent-text:has-text("You: Skip the lint step")');
+  await page.click('.agent-say button:has-text("Back to main agent")');
+  assert.equal(await page.locator('#docs-panel').isHidden(), true);
+  await page.waitForSelector('#prompt:not([disabled])');
+});
+
 test('a project you are not looking at notifies you when it finishes or needs you', async () => {
   const a = await app.project();
   const b = await app.project();

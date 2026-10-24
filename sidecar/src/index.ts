@@ -529,6 +529,14 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'send':
       if (cmd.text.trim() || cmd.attachments?.length) need(cmd.project).session.send(cmd.text, undefined, cmd.attachments);
       return;
+    case 'messageSubagent': {
+      if (!cmd.text.trim()) return;
+      // A subagent can only be reached by the agent that started it, through its SendMessage tool.
+      need(cmd.project).session.send(
+        `Pass this message to the subagent "${cmd.name}" (agent id ${cmd.agentId}) with SendMessage, word for word, then carry on:\n\n${cmd.text}`,
+      );
+      return;
+    }
     case 'interrupt':
       return need(cmd.project).session.interrupt();
     case 'stopProcess':

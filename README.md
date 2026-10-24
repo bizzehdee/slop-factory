@@ -109,6 +109,10 @@ until you start something again or choose **Start next**.
 Work started in a subagent shows under **Processes** while it runs. **View** follows it live: what
 it says, the commands it runs and what they return.
 
+Type in the box under it to message the subagent. The words go through the main agent, which
+passes them on, so they also show in the main conversation. **Back to main agent** (or the close
+button) returns to the conversation; the main agent's message box is always there.
+
 ![A subagent's own steps, followed live beside the conversation](docs/screenshots/subagent.png)
 
 When it finishes, its branch appears under **Worktrees**. Open one to see its commits and the full

@@ -66,6 +66,7 @@ export type UiCommand =
   | { type: 'removeMcp'; project?: string; name: string; scope: McpScope }
   | { type: 'restartSession'; project: string; fresh?: boolean }
   | { type: 'subagentLog'; project: string; agentId: string }
+  | { type: 'messageSubagent'; project: string; agentId: string; name: string; text: string } // said to a subagent, through the main agent
   | { type: 'rewindFiles'; project: string; uuid: string; dryRun: boolean } // files back to how they were at that message // fresh: a new conversation; otherwise the same one carries on
   | { type: 'listWorktrees'; project: string }
   | { type: 'worktreeDiff'; project: string; path: string; requestId: string }

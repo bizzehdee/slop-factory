@@ -65,6 +65,43 @@ export function renderSubagentView(p: Proj | undefined): void {
   if (atBottom || live) body.scrollTop = body.scrollHeight;
 
   const actions = $('docs-actions');
-  actions.hidden = !live;
-  actions.replaceChildren(live ? h('button', { class: 'button', type: 'button', onclick: () => send({ type: 'stopProcess', project: p.dir, id }) }, 'Stop this subagent') : '');
+  actions.hidden = false;
+  // Keep what's being typed while the view refreshes under it.
+  const typed = actions.querySelector<HTMLTextAreaElement>('.agent-say textarea');
+  const draft = typed && actions.dataset.agent === id ? typed.value : '';
+  const focused = !!typed && document.activeElement === typed;
+  actions.dataset.agent = id;
+  const say = h('textarea', { rows: '2', placeholder: `Message ${proc?.description ?? 'the subagent'}`, 'aria-label': 'Message this subagent' }) as HTMLTextAreaElement;
+  say.value = draft;
+  const tell = () => {
+    const text = say.value.trim();
+    if (!text) return;
+    send({ type: 'messageSubagent', project: p.dir, agentId: id, name: proc?.description ?? id, text });
+    // The main agent carries it over, so it is in the main conversation too.
+    p.agentLogs.set(id, [...(p.agentLogs.get(id) ?? []), { type: 'assistantText', agent: id, text: `**You:** ${text}` } as AgentEvent]);
+    say.value = '';
+    renderSubagentView(p);
+  };
+  say.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter' && !ev.shiftKey) {
+      ev.preventDefault();
+      tell();
+    }
+  });
+  actions.replaceChildren(
+    h(
+      'div',
+      { class: 'agent-say' },
+      say,
+      h(
+        'div',
+        { class: 'agent-say-row' },
+        h('button', { class: 'button primary', type: 'button', onclick: tell }, 'Send to subagent'),
+        live ? h('button', { class: 'button', type: 'button', onclick: () => send({ type: 'stopProcess', project: p.dir, id }) }, 'Stop this subagent') : '',
+        h('button', { class: 'button quiet agent-back', type: 'button', onclick: () => ($('docs-close') as HTMLButtonElement).click() }, 'Back to main agent'),
+      ),
+      h('p', { class: 'muted small' }, 'Sent through the main agent, which passes it on. A subagent that has finished may not pick it up.'),
+    ),
+  );
+  if (focused) say.focus();
 }
