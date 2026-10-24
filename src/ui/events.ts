@@ -7,7 +7,7 @@ import { loginUrl, onLoginEvent } from './login';
 import { onCreateEvent } from './newproject';
 import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
-import { startQueued, trackLane } from './queue';
+import { runnableQueued, startFreed, startQueued, trackLane } from './queue';
 import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
@@ -89,6 +89,8 @@ export function onEvent(e: SidecarEvent): void {
     case 'replayDone':
       p.replaying = false;
       refreshWorktrees(p);
+      // The subagent lane may have moved on while the window was away.
+      trackLane(p);
       p.transcript.scrollTop = p.transcript.scrollHeight;
       break;
     case 'closed':
@@ -182,15 +184,19 @@ export function onEvent(e: SidecarEvent): void {
         renderWorktreeView(p);
       }
       return;
-    case 'tasks':
+    case 'tasks': {
+      const before = p.tasks.length ? runnableQueued(p) : undefined;
       p.tasks = e.files;
       p.docs = new Set(e.docs);
       p.docQuestions = e.questions ?? [];
       refreshDocs(p);
+      if (before) startFreed(p, before);
       break;
+    }
     case 'priorities':
       p.priorities = e.order;
       p.subagentLane = new Set(e.subagent ?? []);
+      p.laneRun = e.laneRun ?? undefined;
       break;
     case 'docs':
       if (docsView && docsView.project === p.dir && docsView.requestId === e.requestId) {

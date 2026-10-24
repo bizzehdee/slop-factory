@@ -4,7 +4,7 @@ import { blockRel, docBlocks, showProgress } from './docs';
 import { $, Child, ICON_CLOSE, ICON_FLAG, h, svgIcon } from './dom';
 import { runAction } from './menus';
 import { openQuestion, where } from './questions';
-import { isFree, laneOf, moreButton, nextQueued, startSubagentQueued } from './queue';
+import { isFree, laneOf, moreButton, nextQueued, startSubagentQueued, waitingOn } from './queue';
 import { Proj, active, send } from './state';
 
 // ---------- board ----------
@@ -200,7 +200,7 @@ export function renderPriorities(p: Proj): void {
   section.hidden = !queued.length;
   const open = queued.filter((q) => !q.done).length;
   const next = isFree(p) ? nextQueued(p) : undefined;
-  // The subagent lane stalls after Stop or a reload; Start next picks it up too.
+  // The subagent lane stalls after Stop; Start next picks it up too.
   const nextSub = p.laneRun ? undefined : nextQueued(p, undefined, 'subagent');
   $('priorities-count').replaceChildren(
     open ? `${open} queued` : '',
@@ -232,7 +232,7 @@ export function renderPriorities(p: Proj): void {
         h(
           'span',
           { class: 'priority-state' },
-          p.laneRun?.key === it.key ? 'starting' : it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : '',
+          p.laneRun?.key === it.key ? 'running' : (!it.done && waitingOn(it, items)) || (it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : ''),
           laneOf(p, it.key) === 'subagent' ? h('span', { class: 'lane-tag', title: 'Starts in a background subagent with its own worktree' }, 'subagent') : null,
         ),
         dequeueButton(p, it),

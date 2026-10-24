@@ -44,8 +44,9 @@ test('a reply keeps the conversation scrolled to the end', async () => {
   for (let i = 0; i < 8; i++) {
     await page.fill('#prompt', `Message ${i}\n${'line\n'.repeat(6)}`);
     await page.keyboard.press('Enter');
-    await idle(page);
+    await page.waitForSelector(`.msg.assistant:has-text("Done: Message ${i}")`);
   }
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => r(null))));
   const gap = await page.$eval('.transcript:not([hidden])', (t) => t.scrollHeight - t.scrollTop - t.clientHeight);
   assert.ok(gap < 5, `transcript is ${gap}px from the bottom`);
 });
@@ -67,7 +68,7 @@ test('prioritised work waits for the current turn, and Stop holds the queue', as
   assert.equal(await page.locator('.priority').count(), 0);
 });
 
-test('starting a phase starts its first task and queues the rest, which can be removed', async () => {
+test('starting a phase starts the first task that can start and queues the rest, which can be removed', async () => {
   const page = await app.open(await app.project());
   // Keep the agent busy so the queue holds still while the test looks at it.
   await page.fill('#prompt', 'Do something slow');
@@ -76,14 +77,52 @@ test('starting a phase starts its first task and queues the rest, which can be r
   await page.hover('.phase.current .phase-top');
   await page.click('.phase.current .phase-top .more');
   await page.click('#menu .menu-item:has-text("Start now, queue the rest")');
-  await page.waitForSelector('.msg.user.action:has-text("T3")');
+  // T3 waits on T4 and T4 is blocked, so T5 goes first.
+  await page.waitForSelector('.msg.user.action:has-text("T5")');
   await page.waitForSelector('.priority:has-text("T4")');
-  assert.deepEqual(await page.$$eval('.priority .item-id', (els) => els.map((e) => e.textContent)), ['T4', 'T5']);
-  await page.click('.priority:has-text("T4") .dequeue');
+  assert.deepEqual(await page.$$eval('.priority .item-id', (els) => els.map((e) => e.textContent)), ['T3', 'T4']);
+  const row = (id) => page.locator('.priority', { has: page.locator('.item-id', { hasText: new RegExp(`^${id}$`) }) });
+  assert.match(await row('T3').locator('.priority-state').textContent(), /waits on T4/);
+  assert.match(await row('T4').locator('.priority-state').textContent(), /blocked/);
+  await row('T4').locator('.dequeue').click();
   await page.waitForFunction(() => document.querySelectorAll('.priority').length === 1);
-  // When the agent is free, the queue moves on to what's left: T5, not the removed T4.
-  await page.waitForSelector('.msg.user.action:has-text("T5")', { timeout: 15_000 });
-  assert.equal(await page.locator('.msg.user.action:has-text("T4")').count(), 0);
+  // When the agent is free, T3 still waits: nothing else starts.
+  await idle(page);
+  await page.waitForTimeout(400);
+  assert.equal(await page.locator('.msg.user.action').count(), 1);
+});
+
+test('a queued task waiting on another starts once that one is ticked done', async () => {
+  const dir = await app.project();
+  const page = await app.open(dir);
+  await page.fill('#prompt', 'Do something slow');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#stop:not([hidden])');
+  await (await itemMenu(page, task(page, 'Scheduler'))).filter({ hasText: 'Prioritise' }).click();
+  await page.waitForSelector('.priority:has-text("T3")');
+  await idle(page);
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.msg.user.action').count(), 0, 'T3 waits on T4');
+  const file = path.join(dir, 'tasks/task_phase_2.md');
+  await writeFile(file, (await readFile(file, 'utf8')).replace('- [ ] T4: Email', '- [x] T4: Email'));
+  await page.waitForSelector('.msg.user.action:has-text("T3")', { timeout: 10_000 });
+});
+
+test('the subagent lane carries on through a window reload', async () => {
+  const dir = await app.project({
+    'task.md': '# Tasks\n\n| Phase | Goal | Status | Document |\n|---|---|---|---|\n| 1 | Docs | in progress | [Phase 1](tasks/task_phase_1.md) |\n',
+    'tasks/task_phase_1.md': '# Phase 1: Docs\n\n## Tasks\n\n- [ ] T1: Slow guide\n- [ ] T2: Index\n',
+    'tasks/task_phase_2.md': null,
+  });
+  let page = await app.open(dir);
+  await page.hover('.phase.current .phase-top');
+  await page.click('.phase.current .phase-top .more');
+  await page.click('#menu .menu-item:has-text("Start in subagent, queue the rest")');
+  await page.waitForSelector('.proc.live:has-text("Work in a worktree")');
+  await page.reload();
+  await page.waitForSelector('#project-header:not([hidden])');
+  // T1's subagent finishes after the reload; the lane still starts T2.
+  await page.waitForSelector('.msg.user.action:has-text("T2")', { timeout: 15_000 });
 });
 
 test('open questions list the plan and the reply, and an answer goes to the agent', async () => {

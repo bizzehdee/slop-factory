@@ -18,7 +18,7 @@ import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
-import type { PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
+import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
 const writeOut = process.stdout.write.bind(process.stdout);
@@ -54,6 +54,7 @@ interface Project {
   transcript: ProjectEvent[];
   latest: Map<string, ProjectEvent>;
   openPermissions: Set<string>;
+  laneRun?: LaneRun | null;
 }
 
 const projects = new Map<string, Project>();
@@ -84,7 +85,7 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
   };
 }
 
-const queueEvent = (q: Priorities): ProjectEvent => ({ type: 'priorities', order: q.list(), subagent: q.subagentKeys() });
+const queueEvent = (q: Priorities, laneRun?: LaneRun | null): ProjectEvent => ({ type: 'priorities', order: q.list(), subagent: q.subagentKeys(), laneRun: laneRun ?? null });
 
 async function loadPrompts(dir: string): Promise<DeskPrompts> {
   const raw = await readProjectSettings(dir);
@@ -310,12 +311,17 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'togglePriority': {
       const p = need(cmd.project);
       await p.priorities.toggle(cmd.key);
-      return p.out(queueEvent(p.priorities));
+      return p.out(queueEvent(p.priorities, p.laneRun));
     }
     case 'enqueue': {
       const p = need(cmd.project);
       await p.priorities.enqueue(cmd.keys, cmd.lane, !!cmd.front);
-      return p.out(queueEvent(p.priorities));
+      return p.out(queueEvent(p.priorities, p.laneRun));
+    }
+    case 'setLaneRun': {
+      const p = need(cmd.project);
+      p.laneRun = cmd.run;
+      return p.out(queueEvent(p.priorities, p.laneRun));
     }
     case 'readDocs': {
       const p = need(cmd.project);
@@ -329,7 +335,7 @@ async function handle(cmd: UiCommand): Promise<void> {
       // Once something starts it is no longer waiting in the priority queue.
       if ((cmd.action === 'start' || cmd.action === 'startSubagent') && p.priorities.list().includes(cmd.item.key)) {
         await p.priorities.remove(cmd.item.key);
-        p.out(queueEvent(p.priorities));
+        p.out(queueEvent(p.priorities, p.laneRun));
       }
       return;
     }

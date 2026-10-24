@@ -40,6 +40,13 @@ export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summaris
 // turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
 export type QueueLane = 'main' | 'subagent';
 
+/** The subagent-lane item running now, kept by the sidecar so a reloaded window can follow it. */
+export interface LaneRun {
+  key: string;
+  known: string[]; // subagents already running when it started
+  processId?: string; // the background subagent it became, once seen
+}
+
 export type UiCommand =
   | { type: 'open'; projectDir: string; permissionMode?: PermissionModeName }
   | { type: 'close'; project: string }
@@ -69,6 +76,7 @@ export type UiCommand =
   | { type: 'toggleTask'; project: string; rel: string; line: number; text: string }
   | { type: 'togglePriority'; project: string; key: string }
   | { type: 'enqueue'; project: string; keys: string[]; lane: QueueLane; front?: boolean }
+  | { type: 'setLaneRun'; project: string; run: LaneRun | null }
   | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[]; blocks?: { rel: string; line: number }[] }
   | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem }
   | { type: 'setProvider'; project: string; providerId: string }
@@ -264,7 +272,7 @@ export type ProjectEvent =
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; stopped?: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
   | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
-  | { type: 'priorities'; order: string[]; subagent?: string[] }
+  | { type: 'priorities'; order: string[]; subagent?: string[]; laneRun?: LaneRun | null } // subagent: the keys in the subagent lane
   | { type: 'worktrees'; list: WorktreeInfo[] }
   | { type: 'worktreeDiff'; path: string; requestId: string; diff: string } // subagent: the keys in the subagent lane
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }

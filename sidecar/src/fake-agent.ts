@@ -186,7 +186,7 @@ export class FakeSession {
       if (lower.includes('subagent')) {
         const taskId = `task_${randomUUID().slice(0, 8)}`;
         this.processes.started({ task_id: taskId, task_type: 'local_agent', description: 'Work in a worktree' });
-        await this.sleep(400);
+        await this.sleep(lower.includes('slow') ? 3000 : 400);
         this.processes.ended({ task_id: taskId, status: 'completed', summary: 'Finished in its worktree.' });
         return this.reply('The subagent has finished.');
       }

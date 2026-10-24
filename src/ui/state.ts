@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AskedQuestion, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo } from '../../sidecar/src/protocol';
+import type { AskedQuestion, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 
@@ -44,12 +44,6 @@ export interface Proj {
   worktrees: WorktreeInfo[];
 }
 
-/** A subagent-lane item that was started: which background subagent it became, once that shows up. */
-export interface LaneRun {
-  key: string;
-  known: Set<string>; // subagents already running when it started
-  processId?: string;
-}
 
 export const projects = new Map<string, Proj>();
 export let editorList: EditorInfo[] = [];
