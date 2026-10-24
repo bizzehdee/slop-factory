@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
-    "externalBin": ["binaries/node"]
+    "externalBin": ["binaries/slop-factory-node"]
   }
 }

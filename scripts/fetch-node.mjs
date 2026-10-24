@@ -3,7 +3,7 @@
 //   node scripts/fetch-node.mjs universal-apple-darwin      (Apple silicon and Intel in one file)
 //   node scripts/fetch-node.mjs                             (this machine)
 // Takes the newest release of the major version in .node-version, checks it against Node's
-// published SHA-256 sums, and writes src-tauri/binaries/node-<target>[.exe], where Tauri's
+// published SHA-256 sums, and writes src-tauri/binaries/slop-factory-node-<target>[.exe], where Tauri's
 // externalBin (src-tauri/tauri.release.conf.json) picks it up.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -71,7 +71,8 @@ mkdirSync(out, { recursive: true });
 const work = mkdtempSync(path.join(tmpdir(), 'node-dist-'));
 try {
   for (const triple of targets) {
-    const dest = path.join(out, `node-${triple}${triple.includes('windows') ? '.exe' : ''}`);
+    // Installed beside the app; a plain "node" would clash with the system's /usr/bin/node on Linux.
+    const dest = path.join(out, `slop-factory-node-${triple}${triple.includes('windows') ? '.exe' : ''}`);
     if (triple === 'universal-apple-darwin') {
       // One binary for both Macs, as the universal app needs.
       const arm = await fetchOne(version, sums, 'aarch64-apple-darwin', work);

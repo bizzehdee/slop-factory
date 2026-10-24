@@ -36,7 +36,7 @@ fn node_binary() -> String {
     if let Ok(p) = std::env::var("SLOP_FACTORY_NODE") {
         return p;
     }
-    let name = if cfg!(windows) { "node.exe" } else { "node" };
+    let name = if cfg!(windows) { "slop-factory-node.exe" } else { "slop-factory-node" };
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|dir| dir.join(name)))
