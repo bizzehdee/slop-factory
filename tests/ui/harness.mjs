@@ -37,6 +37,17 @@ export async function startApp() {
     /** A new page with nothing remembered, opened on the given project folders. */
     async open(...dirs) {
       const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+      // Record desktop notifications instead of showing them.
+      await context.addInitScript(() => {
+        window.__notes = [];
+        window.Notification = class {
+          static permission = 'granted';
+          static requestPermission = async () => 'granted';
+          constructor(title, opts) {
+            window.__notes.push({ title, body: opts?.body ?? '' });
+          }
+        };
+      });
       const page = await context.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(e.message));

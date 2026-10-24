@@ -42,6 +42,8 @@ export interface Proj {
   subagentLane: Set<string>; // queued keys that start in a background subagent
   laneRun?: LaneRun; // the subagent-lane item running now
   worktrees: WorktreeInfo[];
+  lastReply?: string; // the agent's latest reply, for notifications
+  queueRan?: boolean; // the queue started something since the last notification
   agentLogs: Map<string, Extract<ProjectEvent, { type: 'assistantText' | 'toolUse' | 'toolResult' }>[]>; // each subagent's own messages, by its task id
 }
 

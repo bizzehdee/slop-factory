@@ -3,6 +3,7 @@ import { submit } from './app';
 import { $, h } from './dom';
 import { field, openProviderDialog } from './providers';
 import { active, load, projects, providerList, send, store } from './state';
+import { notificationsOn, setNotifications } from './notify';
 
 // ---------- settings ----------
 
@@ -38,6 +39,7 @@ export function renderSettings(): void {
   const p = active;
   const theme = (load('slop-factory:theme') as Theme | null) ?? 'system';
   $('theme-picker').querySelectorAll<HTMLInputElement>('input').forEach((r) => (r.checked = r.value === theme));
+  $<HTMLInputElement>('notify-toggle').checked = notificationsOn();
   $('model-for').textContent = p ? `The model ${p.name} uses. Switching starts a new conversation there.` : 'Open a project to choose its model.';
   $('local-models').replaceChildren(
     ...providerList
@@ -151,6 +153,7 @@ export function wireSettings(): void {
     applyTheme(theme);
   });
   $('add-local-model').addEventListener('click', () => openProviderDialog());
+  $('notify-toggle').addEventListener('change', (ev) => setNotifications((ev.target as HTMLInputElement).checked));
   $('mcp-add').addEventListener('click', () => openMcpForm());
   $('mcp-cancel').addEventListener('click', closeMcpForm);
   $('mcp-restart').addEventListener('click', () => {

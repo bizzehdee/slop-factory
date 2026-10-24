@@ -125,6 +125,7 @@ fn sidecar_send(state: State<'_, Sidecar>, line: String) -> Result<(), String> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .manage(Sidecar::default())
         .invoke_handler(tauri::generate_handler![sidecar_start, sidecar_send])
         .build(tauri::generate_context!())

@@ -262,3 +262,28 @@ test("a subagent's own transcript can be watched live, and read again after a re
   await page.click('.tool-agent .agent-view');
   await page.waitForSelector('.agent-text:has-text("All done")');
 });
+
+test('a project you are not looking at notifies you when it finishes or needs you', async () => {
+  const a = await app.project();
+  const b = await app.project();
+  const page = await app.open(a, b);
+  const nameA = path.basename(a);
+  await page.click(`.project-switch:has-text("${nameA}")`);
+  await page.fill('#prompt', 'Do something slow');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#stop:not([hidden])');
+  await page.click(`.project-switch:has-text("${path.basename(b)}")`);
+  await page.waitForFunction(() => window.__notes.length > 0, null, { timeout: 15_000 });
+  const notes = await page.evaluate(() => window.__notes);
+  assert.deepEqual(notes[0], { title: nameA, body: 'Done: Do something slow' });
+  // Turned off in Settings, nothing more arrives.
+  await page.click('#open-settings');
+  await page.uncheck('#notify-toggle');
+  await page.click('#settings-close');
+  await page.click(`.project-switch:has-text("${nameA}")`);
+  await page.fill('#prompt', 'Needs permission to run tests');
+  await page.keyboard.press('Enter');
+  await page.click(`.project-switch:has-text("${path.basename(b)}")`);
+  await page.waitForTimeout(1500);
+  assert.equal(await page.evaluate(() => window.__notes.length), 1);
+});

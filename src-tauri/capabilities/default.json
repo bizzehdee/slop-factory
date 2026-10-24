@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: talk to the sidecar and pick a project folder.",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:allow-open"]
+  "description": "Main window: talk to the sidecar, pick a project folder, and show desktop notifications.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "notification:default"
+  ]
 }

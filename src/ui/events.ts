@@ -7,12 +7,13 @@ import { loginUrl, onLoginEvent } from './login';
 import { onCreateEvent } from './newproject';
 import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
-import { runnableQueued, startFreed, startQueued, trackLane } from './queue';
+import { nextQueued, runnableQueued, startFreed, startQueued, trackLane } from './queue';
 import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
+import { notify } from './notify';
 
 // ---------- events ----------
 
@@ -123,7 +124,16 @@ export function onEvent(e: SidecarEvent): void {
       if (finished) markUnseen();
       p.busy = e.busy;
       p.status = e.status;
-      if (finished && !p.replaying) startQueued(p);
+      if (finished && !p.replaying) {
+        // Tell the person when nothing else is about to start: the work, or the whole queue, is done.
+        const held = p.holdQueue || !!p.lastTurn?.stopped;
+        const more = !held && (nextQueued(p) || (!p.laneRun && nextQueued(p, undefined, 'subagent')));
+        if (!more && !p.lastTurn?.stopped) {
+          notify(p, p.queueRan ? 'queueDone' : 'finished', p.lastReply?.split('\n').find((l) => l.trim())?.slice(0, 140));
+          p.queueRan = false;
+        }
+        startQueued(p);
+      }
       break;
     }
     case 'user':
@@ -138,10 +148,12 @@ export function onEvent(e: SidecarEvent): void {
       assistantFinal(p, e.msgId, e.text, e.parent);
       if (e.parent) return;
       noteReply(p, e.msgId, e.text);
+      p.lastReply = e.text;
       if (isActive) renderQuestions();
       return;
     case 'askQuestions':
       askQuestions(p, e.id, e.questions);
+      notify(p, 'needsYou', e.questions[0]?.question);
       break;
     case 'thinking':
       return;
@@ -155,6 +167,7 @@ export function onEvent(e: SidecarEvent): void {
       return onSubagentLog(p, e.agentId, e.events);
     case 'permissionRequest':
       permissionRequest(p, e.id, e.toolName, e.input, e.reason);
+      notify(p, 'needsYou', `Wants to use ${e.toolName}.`);
       break;
     case 'permissionResolved':
       if (p.asked.delete(e.id) && isActive) {

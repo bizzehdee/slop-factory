@@ -80,6 +80,7 @@ export function startSubagentQueued(p: Proj): void {
   const next = nextQueued(p, undefined, 'subagent');
   if (!next) return;
   setLaneRun(p, { key: next.key, known: liveSubagents(p) });
+  p.queueRan = true;
   runAction(p, 'startSubagent', next);
 }
 
@@ -155,7 +156,9 @@ export function startQueued(p: Proj): void {
   }
   if (!isFree(p)) return;
   const next = nextQueued(p);
-  if (next) runAction(p, 'start', next);
+  if (!next) return;
+  p.queueRan = true;
+  runAction(p, 'start', next);
 }
 
 export function moreButton(p: Proj, item: BoardItem): HTMLButtonElement {

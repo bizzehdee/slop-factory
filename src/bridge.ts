@@ -8,6 +8,7 @@ export interface Bridge {
   send(cmd: UiCommand): void;
   onEvent(fn: Listener): void;
   pickFolder(): Promise<string | null>;
+  notify(title: string, body: string): Promise<void>;
   readonly mode: 'tauri' | 'browser';
 }
 
@@ -17,6 +18,7 @@ async function tauriBridge(): Promise<Bridge> {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
   const { open } = await import('@tauri-apps/plugin-dialog');
+  const notification = await import('@tauri-apps/plugin-notification');
   const listeners: Listener[] = [];
   await listen<string>('sidecar://event', ({ payload }) => {
     try {
@@ -34,6 +36,11 @@ async function tauriBridge(): Promise<Bridge> {
     pickFolder: async () => {
       const picked = await open({ directory: true, multiple: false, title: 'Open project' });
       return typeof picked === 'string' ? picked : null;
+    },
+    notify: async (title, body) => {
+      let granted = await notification.isPermissionGranted();
+      if (!granted) granted = (await notification.requestPermission()) === 'granted';
+      if (granted) notification.sendNotification({ title, body });
     },
   };
 }
@@ -66,6 +73,11 @@ function browserBridge(): Bridge {
     },
     onEvent: (fn) => listeners.push(fn),
     pickFolder: async () => window.prompt('Project folder (absolute path)')?.trim() || null,
+    notify: async (title, body) => {
+      if (!('Notification' in window)) return;
+      if (Notification.permission === 'default') await Notification.requestPermission();
+      if (Notification.permission === 'granted') new Notification(title, { body });
+    },
   };
 }
 
