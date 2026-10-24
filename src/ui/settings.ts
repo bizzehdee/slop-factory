@@ -1,4 +1,4 @@
-import type { McpEntry, McpScope, SidecarEvent } from '../../sidecar/src/protocol';
+import type { McpEntry, McpScope, SidecarEvent, TaskStart } from '../../sidecar/src/protocol';
 import { submit } from './app';
 import { $, h } from './dom';
 import { field, openProviderDialog } from './providers';
@@ -40,6 +40,16 @@ export function renderSettings(): void {
   const theme = (load('slop-factory:theme') as Theme | null) ?? 'system';
   $('theme-picker').querySelectorAll<HTMLInputElement>('input').forEach((r) => (r.checked = r.value === theme));
   $<HTMLInputElement>('notify-toggle').checked = notificationsOn();
+  const globalStart = load('slop-factory:task-start') ?? 'current';
+  $<HTMLSelectElement>('task-start').value = globalStart;
+  // A project can start its tasks differently from the default.
+  $('task-start-project-row').hidden = !p;
+  if (p) {
+    $('task-start-project-label').textContent = `In ${p.name}`;
+    const words = $<HTMLSelectElement>('task-start').selectedOptions[0]?.textContent?.toLowerCase() ?? 'the current conversation';
+    $('task-start-default').textContent = `The default (${words})`;
+    $<HTMLSelectElement>('task-start-project').value = p.taskStart ?? '';
+  }
   $('model-for').textContent = p ? `The model ${p.name} uses. Switching starts a new conversation there.` : 'Open a project to choose its model.';
   $('local-models').replaceChildren(
     ...providerList
@@ -154,6 +164,17 @@ export function wireSettings(): void {
   });
   $('add-local-model').addEventListener('click', () => openProviderDialog());
   $('notify-toggle').addEventListener('change', (ev) => setNotifications((ev.target as HTMLInputElement).checked));
+  $('task-start').addEventListener('change', (ev) => {
+    const mode = (ev.target as HTMLSelectElement).value;
+    store('slop-factory:task-start', mode === 'current' ? null : mode);
+    renderSettings();
+  });
+  $('task-start-project').addEventListener('change', (ev) => {
+    if (!active) return;
+    const mode = (ev.target as HTMLSelectElement).value as TaskStart | '';
+    active.taskStart = mode || null;
+    send({ type: 'setProjectTaskStart', project: active.dir, mode: mode || null });
+  });
   $('fetch-minutes').addEventListener('change', (ev) => send({ type: 'gitSettings', fetchMinutes: Number((ev.target as HTMLSelectElement).value) }));
   $('mcp-add').addEventListener('click', () => openMcpForm());
   $('mcp-cancel').addEventListener('click', closeMcpForm);

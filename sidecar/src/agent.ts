@@ -133,8 +133,39 @@ export class AgentSession {
     void this.pump();
   }
 
+  private holds = 0; // a compaction before a task: the session stays busy until the task is sent
+  private idleWaiters: ((stopped: boolean) => void)[] = [];
+  private sentAny = false;
+
   get busy(): boolean {
-    return this.pendingTurns > 0;
+    return this.pendingTurns > 0 || this.holds > 0;
+  }
+
+  /** Whether there's a conversation to compact: something sent, or one picked up from before. */
+  get hasConversation(): boolean {
+    return this.sentAny || !!this.resume;
+  }
+
+  /**
+   * Compact the conversation, then send. The session stays busy in between, so finishing the
+   * compaction doesn't look like the end of the work (the queue would start the next item).
+   * Stopping the compaction stops the task too.
+   */
+  async compactThen(text: string, action: { kind: SentAction; key: string }): Promise<void> {
+    this.holds++;
+    try {
+      this.send('/compact', { kind: 'compact', key: action.key });
+      const stopped = await new Promise<boolean>((resolve) => this.idleWaiters.push(resolve));
+      if (!stopped) this.send(text, action);
+    } finally {
+      this.holds--;
+      if (!this.busy) this.emit({ type: 'busy', busy: false });
+    }
+  }
+
+  /** Every turn sent so far has ended: let a compactThen carry on. */
+  private settleWaiters(stopped: boolean): void {
+    if (this.pendingTurns === 0) this.idleWaiters.splice(0).forEach((resolve) => resolve(stopped));
   }
 
   get mode(): PermissionModeName {
@@ -143,6 +174,7 @@ export class AgentSession {
 
   send(text: string, action?: { kind: SentAction; key: string }, attachments: Attachment[] = []): void {
     this.pendingTurns++;
+    this.sentAny = true;
     const uuid = randomUUID();
     this.emit({ type: 'user', text, action, uuid, ...(attachments.length ? { attachments: attachments.map((a) => a.name) } : {}) });
     this.emit({ type: 'busy', busy: true });
@@ -237,6 +269,7 @@ export class AgentSession {
       if (!this.abort.signal.aborted) this.emit({ type: 'notice', level: 'error', text: `The agent session ended: ${String(err)}` });
     } finally {
       this.pendingTurns = 0;
+      this.settleWaiters(true);
       this.emit({ type: 'busy', busy: false });
     }
   }
@@ -317,7 +350,8 @@ export class AgentSession {
           costUsd: msg.total_cost_usd ?? 0,
           errors: stopped ? undefined : errors,
         });
-        if (this.pendingTurns === 0) this.emit({ type: 'busy', busy: false });
+        this.settleWaiters(stopped);
+        if (!this.busy) this.emit({ type: 'busy', busy: false });
         void this.reportGauges();
         return;
       }

@@ -83,6 +83,12 @@ Every task, bug and phase has a ⋯ menu:
 - **Show progress** opens its spec and summary; **Summarise work done** and **Reinvestigate** are
   there for finished work.
 
+**Each task starts in** (Settings) chooses where Start now and the queue send a task: the current
+conversation as it is, the current conversation **compacted** first (summarised, so the task sends
+far fewer tokens), or a **new conversation** (it starts from nothing). It's a default for every
+project, and each project can choose differently. A new conversation would stop work still running
+in the project, so then the task is compacted instead.
+
 Starting a **phase** works through its open tasks: the first starts and the rest queue behind it.
 Phases started in a subagent queue their tasks so each starts when the previous subagent finishes.
 The queue respects dependencies: a task that waits on another starts once that one is done, and
@@ -232,6 +238,7 @@ The gear beside Projects opens Settings:
 
 - **Appearance:** follow the system, or always light or dark.
 - **Notifications:** turn desktop notifications on or off.
+- **Tasks:** where each task starts (as above), for every project and for the one that's open.
 - **Git:** how often open projects fetch from their remotes, or never.
 - **Model:** the model the current project uses, and your saved local models.
 - **MCP servers:** add, change or remove the tools and data sources the agent connects to, for all

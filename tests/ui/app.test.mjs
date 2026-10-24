@@ -780,3 +780,46 @@ test('quitting while work runs asks first and stays open on no; with nothing run
   await page.waitForFunction(() => window.__quit === true);
   assert.deepEqual(page.errors, []);
 });
+
+test('tasks start compacted or in a new conversation, by default or for one project', async () => {
+  const page = await app.open(await app.project());
+  const actions = () => page.$$eval('.transcript:not([hidden]) .msg.user.action summary', (els) => els.map((e) => e.textContent.trim()));
+  const setGlobal = async (mode) => {
+    await page.click('#open-settings');
+    await page.selectOption('#task-start', mode);
+    await page.click('#settings-close');
+  };
+
+  // The default: compacted first. Two queued tasks each get their own compaction, one after the other.
+  await setGlobal('compact');
+  await page.fill('#prompt', 'Do something slow');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#stop:not([hidden])');
+  for (const name of ['Report', 'Export fails']) {
+    await (await itemMenu(page, page.locator('.task, .bug', { hasText: name }).first())).filter({ hasText: 'Prioritise' }).click();
+    await page.waitForTimeout(150);
+  }
+  await page.waitForFunction(() => [...document.querySelectorAll('.msg.user.action summary')].filter((s) => s.textContent.includes('B1')).length === 2, null, { timeout: 20_000 });
+  await idle(page);
+  assert.deepEqual(await actions(), ['Compact conversation T5', 'Start now T5', 'Compact conversation B1', 'Start now B1']);
+  assert.equal(await page.locator('.msg.assistant:has-text("Conversation compacted.")').count(), 2);
+
+  // This project: a new conversation, whatever the default.
+  await page.click('#open-settings');
+  assert.match(await page.textContent('#task-start-default'), /The default \(the current conversation, compacted first\)/);
+  await page.selectOption('#task-start-project', 'new');
+  await page.click('#settings-close');
+  await (await itemMenu(page, task(page, 'Email'))).filter({ hasText: 'Start now' }).click();
+  await page.waitForSelector('.notice:has-text("Started a new conversation.")');
+  await page.waitForSelector('.msg.user.action summary:has-text("Start now T4")');
+  await idle(page);
+  assert.equal((await actions()).filter((a) => a.includes('T4')).length, 1, 'no compaction before it');
+
+  // Back to the defaults.
+  await page.click('#open-settings');
+  await page.selectOption('#task-start-project', '');
+  await page.selectOption('#task-start', 'current');
+  await page.click('#settings-close');
+  await page.waitForTimeout(300);
+  assert.deepEqual(page.errors, []);
+});

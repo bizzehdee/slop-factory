@@ -23,7 +23,7 @@ import { GitMonitor, uncommittedChanges } from './git.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
-import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
+import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
 
 fixPath();
 
@@ -58,7 +58,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -176,6 +176,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   await priorities.load();
   out(queueEvent(priorities));
   void usage.get(dir).then((u) => out({ type: 'usage', usage: u }), () => undefined);
+  out({ type: 'taskStart', mode: providers.ownTaskStart(dir) });
 
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
   // Pick up the project's last conversation, showing what it said before.
@@ -220,6 +221,28 @@ async function closeProject(dir: string): Promise<void> {
   p.session.close();
   await p.tasks.stop();
   emit({ type: 'closed', project: dir });
+}
+
+/**
+ * Start a task in the project's conversation, as Settings says: as it is, compacted first, or in a
+ * new conversation. The last two keep the tokens each task sends down. A new conversation would
+ * end work still running here, so then it compacts instead.
+ */
+async function startTask(p: Project, prompt: string, action: { kind: SentAction; key: string }): Promise<void> {
+  let mode = providers.taskStart(p.dir);
+  if (mode === 'new') {
+    const processes = (p.latest.get('processes') as Extract<ProjectEvent, { type: 'processes' }> | undefined)?.list ?? [];
+    const running = p.session.busy || processes.some((x) => x.status === 'running' || x.status === 'pending');
+    if (!running) {
+      await restartSession(p, true);
+      p.session.send(prompt, action);
+      return;
+    }
+    mode = 'compact';
+    p.out({ type: 'notice', level: 'info', text: 'Work is still running here, so this task starts in the current conversation, compacted, rather than a new one.' });
+  }
+  if (mode === 'compact' && p.session.hasConversation) return void p.session.compactThen(prompt, action);
+  p.session.send(prompt, action);
 }
 
 /** Restart a project's agent: so it picks up changed MCP servers (same conversation), or to start afresh. */
@@ -309,6 +332,11 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'setPref':
       if (!/^[a-z][a-z0-9-]{0,40}$/.test(cmd.key)) throw new Error(`Not a setting: ${cmd.key}`);
       return providers.setPref(cmd.key, typeof cmd.value === 'string' ? cmd.value.slice(0, 4096) : null);
+    case 'setProjectTaskStart': {
+      const p = need(cmd.project);
+      await providers.setProjectTaskStart(p.dir, cmd.mode);
+      return p.out({ type: 'taskStart', mode: providers.ownTaskStart(p.dir) });
+    }
     case 'setActiveProject':
       return providers.setActiveProject(path.resolve(cmd.project));
     case 'openFolder':
@@ -506,12 +534,15 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'runAction': {
       const p = need(cmd.project);
-      p.session.send(promptFor(cmd.action, cmd.item, p.prompts), { kind: cmd.action, key: cmd.item.key });
       // Once something starts it is no longer waiting in the priority queue.
       if ((cmd.action === 'start' || cmd.action === 'startSubagent') && p.priorities.list().includes(cmd.item.key)) {
         await p.priorities.remove(cmd.item.key);
         p.out(queueEvent(p.priorities, p.laneRun));
       }
+      const prompt = promptFor(cmd.action, cmd.item, p.prompts);
+      const action = { kind: cmd.action, key: cmd.item.key };
+      if (cmd.action === 'start') return startTask(p, prompt, action);
+      p.session.send(prompt, action);
       return;
     }
     case 'setProvider':
@@ -574,6 +605,8 @@ rl.on('line', (line) => {
 });
 rl.on('close', async () => {
   await Promise.allSettled([...projects.keys()].map(closeProject));
+  // Settings and usage still being written are finished, so quitting can't lose them.
+  await Promise.allSettled([providers.flush(), usage.flush()]);
   process.exit(0);
 });
 

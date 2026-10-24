@@ -246,6 +246,28 @@
           </label>
         </section>
 
+        <section class="settings-section" aria-labelledby="settings-tasks">
+          <h3 id="settings-tasks">Tasks</h3>
+          <label class="field-row" for="task-start">
+            <span>Each task starts in</span>
+            <select id="task-start">
+              <option value="current">The current conversation</option>
+              <option value="compact">The current conversation, compacted first</option>
+              <option value="new">A new conversation</option>
+            </select>
+          </label>
+          <label class="field-row" for="task-start-project" id="task-start-project-row" hidden>
+            <span id="task-start-project-label">In this project</span>
+            <select id="task-start-project">
+              <option value="" id="task-start-default">The default</option>
+              <option value="current">The current conversation</option>
+              <option value="compact">The current conversation, compacted first</option>
+              <option value="new">A new conversation</option>
+            </select>
+          </label>
+          <p class="settings-note">For Start now and the Up next queue, in every project unless a project says otherwise. Compacting summarises the conversation before each task, and a new conversation starts from nothing; both send fewer tokens with each task, at the cost of what the agent remembers from earlier ones.</p>
+        </section>
+
         <section class="settings-section" aria-labelledby="settings-git">
           <h3 id="settings-git">Git</h3>
           <label class="field-row" for="fetch-minutes">

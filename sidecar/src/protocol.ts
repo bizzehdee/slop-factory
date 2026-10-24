@@ -37,7 +37,7 @@ export interface ActionItem {
 // in its own git worktree, in parallel with the conversation.
 export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
 // What a message sent on your behalf did: a board action, or starting or finding workstreams.
-export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams' | 'commit' | 'plan';
+export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams' | 'commit' | 'plan' | 'compact';
 
 // The priority queue has two lanes: "main" items start one at a time in the conversation as each
 // turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
@@ -78,6 +78,7 @@ export type UiCommand =
   | { type: 'getPrefs' }
   | { type: 'setPref'; key: string; value: string | null } // null: back to the default
   | { type: 'setActiveProject'; project: string }
+  | { type: 'setProjectTaskStart'; project: string; mode: TaskStart | null } // null: use the default
   | { type: 'gitChanges'; project: string; requestId: string } // what isn't committed, for review
   | { type: 'gitFetch'; project: string }
   | { type: 'gitPull'; project: string }
@@ -275,6 +276,9 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** Where a task started from the board runs: as the conversation is, compacted first, or a new one. */
+export type TaskStart = 'current' | 'compact' | 'new';
+
 /** A file with uncommitted changes. */
 export interface ChangedFile {
   path: string; // a folder of new files ends with /
@@ -381,6 +385,7 @@ export type ProjectEvent =
   | { type: 'session'; info: SessionInfo }
   | { type: 'usage'; usage: ProjectUsage }
   | { type: 'git'; info: GitInfo }
+  | { type: 'taskStart'; mode: TaskStart | null } // this project's own choice; null: the default
   | { type: 'gitChanges'; requestId: string; files: ChangedFile[]; diff: string; more: number; error?: string }
   | { type: 'planLimit'; limit: PlanLimit }
   | { type: 'gauges'; gauges: Gauges }

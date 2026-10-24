@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, ProjectUsage, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
+import type { AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 import type { FileEdit } from './changes';
@@ -56,6 +56,7 @@ export interface Proj {
   usage?: ProjectUsage;
   git?: GitInfo;
   gauges?: Gauges;
+  taskStart?: TaskStart | null; // this project's own choice of where tasks start; null: the default
   agentLogs: Map<string, Extract<ProjectEvent, { type: 'assistantText' | 'toolUse' | 'toolResult' }>[]>; // each subagent's own messages, by its task id
 }
 
@@ -77,7 +78,7 @@ export const setEditorList = (list: EditorInfo[]) => (editorList = list);
 
 // Settings the sidecar keeps in ~/.slop-factory/config.json, as a desktop webview needn't keep its
 // own storage. The window keeps a copy too, only so the theme is right before the sidecar answers.
-const SHARED = new Set(['slop-factory:theme', 'slop-factory:notifications', 'slop-factory:new-project-parent']);
+const SHARED = new Set(['slop-factory:theme', 'slop-factory:notifications', 'slop-factory:new-project-parent', 'slop-factory:task-start']);
 const prefKey = (key: string) => key.replace(/^slop-factory:/, '');
 let prefs: Record<string, string> | undefined; // the sidecar's settings, once it has said
 

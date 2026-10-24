@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { PermissionModeName, ProviderConfig } from './protocol.js';
+import type { PermissionModeName, ProviderConfig, TaskStart } from './protocol.js';
 
 // Where model providers live. Each project remembers which one it uses.
 // Claude Code talks to any server that speaks Anthropic's Messages API (/v1/messages),
@@ -26,11 +26,13 @@ interface DeskState {
   openProjects?: string[]; // what was open when the app last closed, reopened at start; absent before this was kept here
   activeProject?: string; // the one that was showing
   prefs?: Record<string, string>; // the window's settings: theme, notifications, where new projects go
+  projectTaskStart?: Record<string, TaskStart>; // projects whose tasks start differently from the default
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
+const TASK_STARTS: TaskStart[] = ['current', 'compact', 'new'];
 
-import { appVersion, configDir } from './names.js';
+import { appVersion, configDir, writeFileAtomic } from './names.js';
 
 export { configDir };
 
@@ -51,6 +53,7 @@ export class ProviderStore {
         gitFetchMinutes: typeof raw.gitFetchMinutes === 'number' && raw.gitFetchMinutes >= 0 ? raw.gitFetchMinutes : undefined,
         openProjects: Array.isArray(raw.openProjects) ? raw.openProjects.filter((d: unknown) => typeof d === 'string') : undefined,
         activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
+        projectTaskStart: raw.projectTaskStart && typeof raw.projectTaskStart === 'object' ? Object.fromEntries(Object.entries(raw.projectTaskStart).filter(([, v]) => TASK_STARTS.includes(v as TaskStart))) as Record<string, TaskStart> : undefined,
         prefs: raw.prefs && typeof raw.prefs === 'object' ? Object.fromEntries(Object.entries(raw.prefs).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
       };
     } catch {
@@ -128,6 +131,26 @@ export class ProviderStore {
     await this.save();
   }
 
+  /** Where a project's tasks start: its own choice, else the default in Settings, else as it is. */
+  taskStart(dir: string): TaskStart {
+    const own = this.state.projectTaskStart?.[dir];
+    if (own) return own;
+    const global = this.state.prefs?.['task-start'] as TaskStart | undefined;
+    return global && TASK_STARTS.includes(global) ? global : 'current';
+  }
+
+  ownTaskStart(dir: string): TaskStart | null {
+    return this.state.projectTaskStart?.[dir] ?? null;
+  }
+
+  async setProjectTaskStart(dir: string, mode: TaskStart | null): Promise<void> {
+    const map = { ...(this.state.projectTaskStart ?? {}) };
+    if (mode && TASK_STARTS.includes(mode)) map[dir] = mode;
+    else delete map[dir];
+    this.state.projectTaskStart = map;
+    await this.save();
+  }
+
   autoPull(dir: string): boolean {
     return !!this.state.projectAutoPull[dir];
   }
@@ -194,12 +217,14 @@ export class ProviderStore {
   /** Writes go one after another, so several projects opening at once can't interleave them. */
   private save(): Promise<void> {
     const text = JSON.stringify(this.state, null, 2) + '\n';
-    const write = async () => {
-      await fs.mkdir(path.dirname(this.file), { recursive: true });
-      await fs.writeFile(this.file, text, { encoding: 'utf8', mode: 0o600 });
-    };
+    const write = () => writeFileAtomic(this.file, text, 0o600);
     this.writing = this.writing.then(write, write);
     return this.writing;
+  }
+
+  /** Wait for any write still under way, before the sidecar exits. */
+  flush(): Promise<void> {
+    return this.writing.catch(() => undefined);
   }
 }
 

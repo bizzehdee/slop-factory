@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import { configDir } from './names.js';
+import { configDir, writeFileAtomic } from './names.js';
 import type { ProjectUsage, UsageTotals } from './protocol.js';
 
 // What each project has used: cost, tokens, turns and time, all told and by day and model, kept
@@ -87,10 +87,12 @@ export class UsageLedger {
     const keep = Object.entries(this.ledger.sessions).sort((a, b) => b[1].at - a[1].at).slice(0, SESSIONS_KEPT);
     this.ledger.sessions = Object.fromEntries(keep);
     const text = JSON.stringify(this.ledger) + '\n';
-    this.writing = this.writing
-      .then(() => fs.mkdir(path.dirname(this.file), { recursive: true }))
-      .then(() => fs.writeFile(this.file, text, 'utf8'))
-      .catch(() => undefined);
+    this.writing = this.writing.then(() => writeFileAtomic(this.file, text)).catch(() => undefined);
+    return this.writing;
+  }
+
+  /** Wait for any write still under way, before the sidecar exits. */
+  flush(): Promise<void> {
     return this.writing;
   }
 

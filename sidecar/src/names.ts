@@ -58,3 +58,19 @@ export async function loadProjectSettings(root: string): Promise<{ settings: Rec
 export async function readProjectSettings(root: string): Promise<Record<string, unknown>> {
   return (await loadProjectSettings(root)).settings;
 }
+
+/**
+ * Write a file so it's never left half-written: into a temporary file beside it, then renamed over
+ * it in one step. A crash or the app quitting mid-write leaves the old file whole.
+ */
+export async function writeFileAtomic(file: string, text: string, mode?: number): Promise<void> {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const temp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fs.writeFile(temp, text, { encoding: 'utf8', ...(mode ? { mode } : {}) });
+    await fs.rename(temp, file);
+  } catch (err) {
+    await fs.rm(temp, { force: true }).catch(() => undefined);
+    throw err;
+  }
+}

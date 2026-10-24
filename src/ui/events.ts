@@ -127,6 +127,10 @@ export function onEvent(e: SidecarEvent): void {
       return;
     case 'gitChanges':
       return onGitChanges(p, e);
+    case 'taskStart':
+      p.taskStart = e.mode;
+      if (isActive && $<HTMLDialogElement>('settings-dialog').open) renderSettings();
+      return;
     case 'git':
       p.git = e.info;
       if (isActive) renderGit();

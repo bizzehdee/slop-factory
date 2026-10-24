@@ -34,11 +34,18 @@ export async function startApp() {
   await waitForHttp(URL_BASE, 30_000);
   const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
   let n = 0;
+  let lastContext;
   return {
     work,
-    /** A new page with nothing remembered, opened on the given project folders. */
+    /**
+     * A new page with nothing remembered, opened on the given project folders. The last test's page
+     * closes first: every page hears every project's events, as the one desktop window does, so a
+     * page left open would act on the queue alongside this one.
+     */
     async open(...dirs) {
+      await lastContext?.close().catch(() => undefined);
       const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+      lastContext = context;
       // Record desktop notifications instead of showing them.
       await context.addInitScript(() => {
         window.__notes = [];
@@ -73,6 +80,7 @@ export async function startApp() {
         const file = path.join(work, 'config', 'config.json');
         const config = JSON.parse(await readFile(file, 'utf8').catch(() => '{}'));
         editConfig(config);
+        await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, JSON.stringify(config, null, 2));
       }
       procs[0] = bridge();
