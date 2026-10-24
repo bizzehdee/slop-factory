@@ -186,7 +186,51 @@ export function phaseTop(p: Proj, item: BoardItem | undefined, head: HTMLElement
   return h('div', { class: 'phase-top' }, head, moreButton(p, item));
 }
 
-export function dequeueButton(p: Proj, it: BoardItem): HTMLButtonElement {
+export // Up next rows can be dragged into a new order, or moved with Alt+Up and Alt+Down.
+let dragKey: string | undefined;
+
+function moveTo(p: Proj, order: string[], key: string, before: string | undefined): void {
+  const rest = order.filter((k) => k !== key);
+  const at = before ? rest.indexOf(before) : rest.length;
+  rest.splice(at < 0 ? rest.length : at, 0, key);
+  if (rest.join('\n') !== order.join('\n')) send({ type: 'reorderQueue', project: p.dir, order: rest });
+}
+
+function draggableRow(p: Proj, key: string, order: string[], tag: 'li', props: Record<string, unknown>, ...children: Child[]): HTMLElement {
+  const li = h(tag, { ...props, draggable: 'true', tabindex: 0, dataset: { key }, title: 'Drag to change the order (or Alt+Up / Alt+Down)' }, ...children);
+  li.addEventListener('dragstart', (ev) => {
+    dragKey = key;
+    li.classList.add('dragging');
+    ev.dataTransfer?.setData('text/plain', key);
+  });
+  li.addEventListener('dragend', () => {
+    dragKey = undefined;
+    li.classList.remove('dragging');
+    document.querySelectorAll('.drop-before').forEach((x) => x.classList.remove('drop-before'));
+  });
+  li.addEventListener('dragover', (ev) => {
+    if (!dragKey || dragKey === key) return;
+    ev.preventDefault();
+    li.classList.add('drop-before');
+  });
+  li.addEventListener('dragleave', () => li.classList.remove('drop-before'));
+  li.addEventListener('drop', (ev) => {
+    ev.preventDefault();
+    li.classList.remove('drop-before');
+    if (dragKey && dragKey !== key) moveTo(p, order, dragKey, key);
+  });
+  li.addEventListener('keydown', (ev) => {
+    if (!ev.altKey || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
+    ev.preventDefault();
+    const i = order.indexOf(key);
+    const before = ev.key === 'ArrowUp' ? order[i - 1] : order[i + 2];
+    if (ev.key === 'ArrowUp' && i === 0) return;
+    moveTo(p, order, key, before);
+  });
+  return li;
+}
+
+function dequeueButton(p: Proj, it: BoardItem): HTMLButtonElement {
   const b = h('button', { class: 'more dequeue', type: 'button', title: 'Remove from the queue', 'aria-label': `Remove ${itemRef(it) || it.title} from the queue` }) as HTMLButtonElement;
   b.append(svgIcon(ICON_CLOSE));
   b.addEventListener('click', () => send({ type: 'togglePriority', project: p.dir, key: it.key }));
@@ -224,7 +268,10 @@ export function renderPriorities(p: Proj): void {
   );
   $('priorities').replaceChildren(
     ...queued.map((it) =>
-      h(
+      draggableRow(
+        p,
+        it.key,
+        queued.map((q) => q.key),
         'li',
         { class: `priority kind-${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
         h('span', { class: 'item-id' }, itemRef(it) || '·'),

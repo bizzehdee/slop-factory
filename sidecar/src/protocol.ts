@@ -79,6 +79,9 @@ export type UiCommand =
   | { type: 'togglePriority'; project: string; key: string }
   | { type: 'enqueue'; project: string; keys: string[]; lane: QueueLane; front?: boolean }
   | { type: 'setLaneRun'; project: string; run: LaneRun | null }
+  | { type: 'reorderQueue'; project: string; order: string[] }
+  // Quick capture from the board. rel: the phase document or plan document; section: an older TASK.md's.
+  | { type: 'capture'; project: string; kind: 'task' | 'bug' | 'question'; title: string; rel?: string; section?: string; details?: string }
   | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[]; blocks?: { rel: string; line: number }[] }
   | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem }
   | { type: 'setProvider'; project: string; providerId: string }

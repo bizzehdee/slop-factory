@@ -17,6 +17,7 @@ import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
+import { addBug, addQuestion, addTask } from './capture.js';
 import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
 import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
 
@@ -335,6 +336,27 @@ async function handle(cmd: UiCommand): Promise<void> {
       const p = need(cmd.project);
       await p.priorities.enqueue(cmd.keys, cmd.lane, !!cmd.front);
       return p.out(queueEvent(p.priorities, p.laneRun));
+    }
+    case 'reorderQueue': {
+      const p = need(cmd.project);
+      await p.priorities.reorder(cmd.order);
+      return p.out(queueEvent(p.priorities, p.laneRun));
+    }
+    case 'capture': {
+      const p = need(cmd.project);
+      const title = cmd.title.trim();
+      if (!title) throw new Error('Give it a title.');
+      if (cmd.kind === 'bug') {
+        const id = await addBug(p.dir, title, cmd.details ?? '');
+        return p.out({ type: 'notice', level: 'info', text: `Added ${id}: ${title} to tasks/bugs.md.` });
+      }
+      if (!cmd.rel) throw new Error('Choose where it goes.');
+      if (cmd.kind === 'question') {
+        await addQuestion(p.dir, cmd.rel, title);
+        return p.out({ type: 'notice', level: 'info', text: `Added the question to ${cmd.rel}.` });
+      }
+      const id = await addTask(p.dir, cmd.rel, title, p.tasks.snapshot().map((f) => f.rel), cmd.section);
+      return p.out({ type: 'notice', level: 'info', text: `Added ${id}: ${title} to ${cmd.rel}.` });
     }
     case 'setLaneRun': {
       const p = need(cmd.project);

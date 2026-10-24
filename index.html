@@ -44,6 +44,9 @@
           <div class="pane-head">
             <h2 id="tasks-heading">Delivery</h2>
             <span id="tasks-summary" class="pane-meta"></span>
+            <button id="capture" class="icon-button" type="button" title="Add a task, bug or question" aria-label="Add a task, bug or question" aria-haspopup="menu" aria-expanded="false">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+            </button>
           </div>
           <div id="tasks" class="pane-body"></div>
         </section>
@@ -175,6 +178,29 @@
           <span class="spacer"></span>
           <button class="button quiet" type="button" value="cancel" id="provider-cancel">Cancel</button>
           <button class="button primary" type="submit" id="provider-save">Save and use</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="capture-dialog" class="dialog" aria-labelledby="capture-title">
+      <form id="capture-form" method="dialog">
+        <h2 id="capture-title">Add a task</h2>
+        <label class="field">
+          <span id="capture-text-label">Task</span>
+          <input name="title" type="text" required autocomplete="off" />
+        </label>
+        <label class="field" id="capture-where-field">
+          <span id="capture-where-label">Phase</span>
+          <select name="where"></select>
+        </label>
+        <label class="field" id="capture-details-field">
+          <span>Details <small>(optional: steps, what you expected, what happened)</small></span>
+          <textarea name="details" rows="3"></textarea>
+        </label>
+        <p id="capture-note" class="field-hint"></p>
+        <div class="dialog-actions">
+          <span class="spacer"></span>
+          <button class="button quiet" type="button" id="capture-cancel">Cancel</button>
+          <button class="button primary" type="submit">Add</button>
         </div>
       </form>
     </dialog>

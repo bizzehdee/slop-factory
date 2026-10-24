@@ -2456,3 +2456,19 @@ textarea {
 .turn-changes-done {
   color: var(--faint);
 }
+
+#delivery-section .pane-head {
+  align-items: center;
+}
+#capture {
+  margin-left: 6px;
+}
+.priority[draggable='true'] {
+  cursor: grab;
+}
+.priority.dragging {
+  opacity: 0.4;
+}
+.priority.drop-before {
+  box-shadow: 0 -2px 0 var(--clay);
+}

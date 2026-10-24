@@ -308,3 +308,50 @@ test("a turn's changes are listed, can be reviewed, and can be undone", async ()
   await page.waitForSelector('.notice:has-text("Undid the changes to 1 file.")');
   assert.equal(await readFile(path.join(dir, 'notes.txt'), 'utf8'), 'start\n');
 });
+
+test('a task, a bug and an open question can be added from the board', async () => {
+  const dir = await app.project();
+  const page = await app.open(dir);
+  const capture = async (item, fill) => {
+    await page.click('#capture');
+    await page.click(`#menu .menu-item:has-text("${item}")`);
+    await fill();
+    await page.click('#capture-form button[type=submit]');
+  };
+  await capture('Add a task', async () => {
+    await page.fill('#capture-form input[name=title]', 'CSV export');
+    await page.selectOption('#capture-form select[name=where]', 'tasks/task_phase_2.md');
+  });
+  await page.waitForSelector('.task:has-text("CSV export") .item-id:has-text("T6")');
+  assert.match(await readFile(path.join(dir, 'tasks/task_phase_2.md'), 'utf8'), /- \[ \] T5: Report\n- \[ \] T6: CSV export\n/);
+  await capture('Report a bug', async () => {
+    await page.fill('#capture-form input[name=title]', 'Totals are off by one');
+    await page.fill('#capture-form textarea[name=details]', 'Seen on the March report');
+  });
+  await page.waitForSelector('.bug:has-text("Totals are off by one")');
+  assert.match(await readFile(path.join(dir, 'tasks/bugs.md'), 'utf8'), /### B2: Totals are off by one\n- Status: open\n- Reported: .*\n- Seen on the March report/);
+  await capture('Add an open question', async () => {
+    await page.fill('#capture-form input[name=title]', 'Do reports need a logo?');
+    await page.selectOption('#capture-form select[name=where]', 'plan.md');
+  });
+  await page.waitForSelector('.q-row:has-text("Do reports need a logo?")');
+});
+
+test('the queue can be put in a new order by keyboard or by dragging', async () => {
+  const dir = await app.project();
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(path.join(dir, '.slop-factory'), { recursive: true });
+  await writeFile(path.join(dir, '.slop-factory/priorities.json'), JSON.stringify({ order: ['T5', 'B1', 'T4'] }));
+  const page = await app.open(dir);
+  const ids = () => page.$$eval('.priority .item-id', (els) => els.map((e) => e.textContent));
+  await page.waitForSelector('.priority');
+  assert.deepEqual(await ids(), ['T5', 'B1', 'T4']);
+  await page.focus('.priority >> nth=0');
+  await page.keyboard.press('Alt+ArrowDown');
+  await page.waitForFunction(() => document.querySelector('.priority .item-id')?.textContent === 'B1');
+  assert.deepEqual(await ids(), ['B1', 'T5', 'T4']);
+  await page.dragAndDrop('.priority >> nth=2', '.priority >> nth=0');
+  await page.waitForFunction(() => document.querySelector('.priority .item-id')?.textContent === 'T4');
+  assert.deepEqual(await ids(), ['T4', 'B1', 'T5']);
+  assert.deepEqual(JSON.parse(await readFile(path.join(dir, '.slop-factory/priorities.json'), 'utf8')).order, ['T4', 'B1', 'T5']);
+});

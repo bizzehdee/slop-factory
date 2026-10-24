@@ -143,6 +143,13 @@ export class Priorities {
     return this.save();
   }
 
+  /** Put the queue in a new order; keys not mentioned keep their place at the end. */
+  async reorder(order: string[]): Promise<string[]> {
+    const known = order.filter((k) => this.order.includes(k));
+    this.order = [...known, ...this.order.filter((k) => !known.includes(k))];
+    return this.save();
+  }
+
   /** Take an item off the queue, e.g. once it has started. */
   async remove(key: string): Promise<string[]> {
     if (!this.order.includes(key)) return this.list();

@@ -660,3 +660,20 @@ test('a stored conversation becomes the events that show it, without Claude Code
     { type: 'assistantText', msgId: 'a2', text: 'subagent says hi', parent: 'tu9' },
   ]);
 });
+
+test('quick capture writes tasks, bugs and questions in the standard formats', async () => {
+  const { nextId, insertTask, insertLegacyTask, insertBug, insertQuestion } = await import('../dist/capture.js');
+  const date = new Date().toISOString().slice(0, 10);
+  assert.equal(nextId(['- [x] T4: a\n- [ ] T12: b', 'T7 waits on T9'], 'T'), 13);
+  assert.equal(nextId(['### B2: x\n### B5: y'], 'B'), 6);
+  const phase = '# Phase 2: Export\n\n## Tasks\n\n- [ ] T3: One\n\n## Done when\n\n- Shipped.\n\n## Revision history\n\n| Date | Change |\n|---|---|\n| 2026-10-01 | First. |\n';
+  const withTask = insertTask(phase, 'T13', 'Two');
+  assert.match(withTask, /- \[ \] T3: One\n- \[ \] T13: Two\n\n## Done when/);
+  assert.match(withTask, new RegExp(`\\| 2026-10-01 \\| First\\. \\|\\n\\| ${date} \\| Added T13: Two \\|`));
+  assert.match(insertTask('# Phase 9: New\n', 'T1', 'First'), /# Phase 9: New\n\n## Tasks\n\n- \[ \] T1: First/);
+  assert.match(insertLegacyTask('# Tasks\n\n## Core\n\n- [ ] TASK-001: a\n\n## Later\n', 'Core', 'TASK-002', 'b'), /TASK-001: a\n- \[ \] TASK-002: b\n\n## Later/);
+  assert.equal(insertBug('# Bugs\n\n### B1: Old\n- Status: fixed\n', 'B2', 'Crash on save', 'Happens with empty files'), `# Bugs\n\n### B1: Old\n- Status: fixed\n\n### B2: Crash on save\n- Status: open\n- Reported: ${date}\n- Happens with empty files\n`);
+  assert.match(insertBug('', 'B1', 'First', ''), /^# Bugs\n\n### B1: First\n- Status: open/);
+  assert.match(insertQuestion('# Stack\n\n## Open questions\n\nNone.\n\n## Revision history\n', 'Which database?'), /## Open questions\n\n- Which database\?\n\n## Revision history/);
+  assert.match(insertQuestion('# Plan\n\nText.\n\n## Revision history\n\n| a | b |\n', 'Who decides?'), /Text\.\n\n## Open questions\n\n- Who decides\?\n\n## Revision history/);
+});

@@ -10,6 +10,7 @@ import { newProjectDialog, wireNewProjectDialog } from './newproject';
 import { wireProviderDialog } from './providers';
 import { wireSettings } from './settings';
 import { active, bridge, load, projects, send, setBridge } from './state';
+import { wireCapture } from './capture';
 
 export function addProjectMenu(): MenuItem[] {
   return [
@@ -55,6 +56,7 @@ export async function init(): Promise<void> {
   wireNewProjectDialog();
   wireLoginDialog();
   wireSettings();
+  wireCapture();
   $('composer').addEventListener('submit', (ev) => {
     ev.preventDefault();
     submit();
