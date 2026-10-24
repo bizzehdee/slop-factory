@@ -428,3 +428,27 @@ test('Ctrl+K finds tasks, questions and messages, and goes to them', async () =>
   await page.waitForSelector('#settings-dialog[open]');
   assert.deepEqual(page.errors, []);
 });
+
+test("each project's usage is counted and shown, with the plan's limit", async () => {
+  const page = await app.open(await app.project());
+  for (const text of ['First thing', 'Second thing, near the limit']) {
+    await page.fill('#prompt', text);
+    await page.keyboard.press('Enter');
+    await page.waitForSelector(`.msg.assistant:has-text("Done: ${text}")`);
+  }
+  await page.waitForSelector('#session dd:has-text("Today $0.50")');
+  await page.waitForSelector('#session dd.warn-text, #session dd .warn-text');
+  assert.match(await page.textContent('#session'), /82% of your 5-hour limit used/);
+  await page.click('#session .link-button:has-text("Details")');
+  await page.waitForSelector('.usage-stats');
+  assert.match(await page.textContent('.usage-stats'), /\$0\.50/);
+  assert.equal(await page.locator('.usage-day').count(), 14);
+  // It's still there after a reload, and can be reset.
+  await page.reload();
+  await page.waitForSelector('#session dd:has-text("Today $0.50")');
+  page.once('dialog', (d) => d.accept());
+  await page.click('#session .link-button:has-text("Details")');
+  await page.click('#docs-actions button:has-text("Reset")');
+  await page.waitForSelector('.docs-empty:has-text("Nothing used yet")');
+  assert.deepEqual(page.errors, []);
+});

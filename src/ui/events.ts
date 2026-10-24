@@ -15,6 +15,7 @@ import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktre
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
 import { endTurn, noteToolUse, onRewound, startTurn } from './changes';
+import { renderUsageView, setPlanLimit } from './usage';
 
 // ---------- events ----------
 
@@ -109,6 +110,15 @@ export function onEvent(e: SidecarEvent): void {
       break;
     case 'commands':
       p.commands = e.commands;
+      return;
+    case 'usage':
+      p.usage = e.usage;
+      if (docsView?.project === p.dir && docsView.usage) renderUsageView(p);
+      if (isActive) renderSession();
+      return;
+    case 'planLimit':
+      setPlanLimit(e.limit);
+      if (isActive) renderSession();
       return;
     case 'mode':
       p.mode = e.mode;

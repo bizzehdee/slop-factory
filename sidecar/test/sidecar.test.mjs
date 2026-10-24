@@ -683,6 +683,39 @@ test('attached files go to the model as blocks and come back as attachments', as
   ]);
 });
 
+test('usage adds each turn once, across restarts and resets, by day and model', async () => {
+  const { UsageLedger } = await import('../dist/usage.js');
+  const dir = await mkdtemp(path.join(tmpdir(), 'usage-'));
+  try {
+    const file = path.join(dir, 'usage.json');
+    const m = (out, cost) => ({ opus: { inputTokens: out * 2, outputTokens: out, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: cost } });
+    const day1 = new Date('2026-10-20T10:00:00').getTime();
+    let ledger = new UsageLedger(file);
+    await ledger.record('/p', 's1', 1, m(100, 1), 1000, day1);
+    // Results carry the conversation's running totals: the second turn adds only its share.
+    let u = await ledger.record('/p', 's1', 1.5, m(150, 1.5), 500, day1);
+    assert.equal(u.total.turns, 2);
+    assert.equal(u.total.costUsd, 1.5);
+    assert.equal(u.total.outputTokens, 150);
+    assert.equal(u.total.durationMs, 1500);
+    // After a restart the conversation is picked up and its first result repeats the earlier totals.
+    ledger = new UsageLedger(file);
+    u = await ledger.record('/p', 's1', 2, m(200, 2), 100, day1 + 86_400_000);
+    assert.equal(u.total.costUsd, 2);
+    assert.equal(u.today.costUsd, 0.5);
+    assert.deepEqual(u.days.slice(-2).map((d) => d.costUsd), [1.5, 0.5]);
+    // /clear resets the running totals: the smaller total is all new.
+    u = await ledger.record('/p', 's1', 0.25, m(10, 0.25), 100, day1 + 86_400_000);
+    assert.equal(u.total.costUsd, 2.25);
+    assert.deepEqual(u.models, [{ model: 'opus', costUsd: 2.25, tokens: 630 }]);
+    // Other projects are separate, and a project can start again from zero.
+    assert.equal((await ledger.get('/other')).total.turns, 0);
+    assert.equal((await ledger.reset('/p')).total.turns, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('quick capture writes tasks, bugs and questions in the standard formats', async () => {
   const { nextId, insertTask, insertLegacyTask, insertBug, insertQuestion } = await import('../dist/capture.js');
   const date = new Date().toISOString().slice(0, 10);

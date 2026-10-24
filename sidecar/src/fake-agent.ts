@@ -3,6 +3,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileS
 import path from 'node:path';
 import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
+import type { ModelTotals } from './usage.js';
 import { configDir } from './names.js';
 import type { AskedQuestion, Attachment, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
@@ -57,6 +58,8 @@ export class FakeSession {
   }
 
   onSession?: (id: string) => void;
+  onUsage?: (sessionId: string, costUsd: number, models: Record<string, ModelTotals>, durationMs: number) => void;
+  private totals = { costUsd: 0, out: 0 }; // the conversation's running totals, as a real result carries them
   private sessionId = '';
   private subagents = new Map<string, ProjectEvent[]>();
 
@@ -260,6 +263,7 @@ export class FakeSession {
         this.emit({ type: 'toolUse', id, name: before ? 'Edit' : 'Write', input: before ? { file_path: path.join(this.cwd, 'notes.txt'), old_string: before, new_string: before + line } : { file_path: path.join(this.cwd, 'notes.txt'), content: line }, parent: null });
         this.emit({ type: 'toolResult', toolUseId: id, isError: false, preview: 'The file notes.txt has been updated.' });
       }
+      if (lower.includes('limit')) this.emit({ type: 'planLimit', limit: { status: 'allowed_warning', window: 'five_hour', utilization: 0.82, resetsAt: Math.floor(Date.now() / 1000) + 7200 } });
       if (lower.includes('slow')) await this.sleep(4000);
       if (attached.length) return this.reply(`I can see ${attached.join(', ')}.`);
       this.reply(`Done: ${text.split('\n')[0].slice(0, 80)}`);
@@ -267,7 +271,10 @@ export class FakeSession {
     await Promise.race([work, stop]);
     this.stopTurn = undefined;
     this.pendingTurns = Math.max(0, this.pendingTurns - 1);
-    this.emit({ type: 'turnEnd', durationMs: 100, numTurns: 1, isError: false, stopped, inputTokens: 10, outputTokens: 20, costUsd: 0 });
+    this.totals.costUsd += 0.25;
+    this.totals.out += 20;
+    this.onUsage?.(this.sessionId, this.totals.costUsd, { 'fake-model': { inputTokens: 10 * (this.totals.out / 20), outputTokens: this.totals.out, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUSD: this.totals.costUsd } }, 100);
+    this.emit({ type: 'turnEnd', durationMs: 100, numTurns: 1, isError: false, stopped, inputTokens: 10, outputTokens: 20, costUsd: this.totals.costUsd });
     if (this.pendingTurns === 0) this.emit({ type: 'busy', busy: false });
   }
 }

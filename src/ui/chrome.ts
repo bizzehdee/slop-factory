@@ -11,6 +11,7 @@ import { Proj, active, editorList, load, projects, providerList, providerOf, sen
 import { refreshWorktrees, renderWorktrees } from './worktrees';
 import { openSubagent } from './subagents';
 import { renderAttachments, renderSlashMenu } from './composer';
+import { limitText, openUsage, planLimit, usageSummary } from './usage';
 
 // ---------- projects list ----------
 
@@ -155,6 +156,14 @@ export function renderSession(): void {
     rows.push(['Model', s.model]);
     if (providerOf(p!).kind === 'subscription') rows.push(['Billing', h('span', { class: login.ok ? '' : 'warn-text' }, login.text)]);
     if (s.mcpServers.length) rows.push(['MCP', s.mcpServers.map((m) => `${m.name} (${m.status})`).join(', ')]);
+  }
+  if (p) {
+    const summary = usageSummary(p);
+    if (summary) rows.push(['Usage', h('span', {}, summary, ' ', h('button', { class: 'link-button', type: 'button', onclick: () => openUsage(p) }, 'Details'))]);
+  }
+  if (p && planLimit && providerOf(p).kind === 'subscription') {
+    const tight = planLimit.status !== 'allowed' || (planLimit.utilization ?? 0) >= 0.8;
+    rows.push(['Plan', h('span', { class: tight ? 'warn-text' : '' }, limitText(planLimit))]);
   }
   if (p?.lastTurn) rows.push(['Last turn', `${(p.lastTurn.durationMs / 1000).toFixed(1)}s, ${p.lastTurn.outputTokens.toLocaleString()} tokens out`]);
   if (p && !s) rows.push(['', h('span', { class: 'muted' }, 'The agent starts with your first message.')]);

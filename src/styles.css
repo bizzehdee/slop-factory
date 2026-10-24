@@ -2644,3 +2644,76 @@ textarea {
   padding: 14px 10px;
   color: var(--muted);
 }
+
+/* ---------- usage ---------- */
+
+.usage h3 {
+  margin: 22px 0 8px;
+  font-size: var(--step--1);
+  font-weight: 600;
+  color: var(--muted);
+}
+.usage-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 10px;
+}
+.usage-stat {
+  display: grid;
+  gap: 2px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+.usage-value {
+  font-family: var(--serif);
+  font-size: 1.6rem;
+  line-height: 1.1;
+}
+.usage-label {
+  font-size: var(--step--1);
+}
+.usage-note {
+  color: var(--faint);
+  font-size: 0.75rem;
+}
+.usage-chart {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 4px;
+  height: 120px;
+  align-items: end;
+}
+.usage-day {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  align-items: end;
+  gap: 4px;
+}
+.usage-bar {
+  min-height: 0;
+  border-radius: 3px 3px 0 0;
+  background: var(--clay);
+}
+.usage-date {
+  color: var(--faint);
+  font-size: 0.6875rem;
+  text-align: center;
+}
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--step--1);
+}
+.usage-table th,
+.usage-table td {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  font-weight: 400;
+}
+.usage-table td {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}

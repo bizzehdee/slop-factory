@@ -13,6 +13,7 @@ import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
+import type { ModelTotals } from './usage.js';
 
 /** An async queue we hand to query() as its prompt, so one Claude Code session lives across many turns. */
 class InputQueue implements AsyncIterable<SDKUserMessage> {
@@ -92,6 +93,8 @@ export class AgentSession {
 
   /** Told the conversation's id once Claude Code starts, so it can be picked up later. */
   onSession?: (id: string) => void;
+  /** A turn ended: the conversation's running totals, for the usage ledger. */
+  onUsage?: (sessionId: string, costUsd: number, models: Record<string, ModelTotals>, durationMs: number) => void;
   private sessionId?: string;
 
   /** A subagent's transcript from Claude Code's files, for one the window didn't see live. */
@@ -280,8 +283,17 @@ export class AgentSession {
         return;
       }
 
+      case 'rate_limit_event': {
+        const r = msg.rate_limit_info;
+        // A fraction; a percentage is taken as one too, in case that changes.
+        const used = r.utilization != null && r.utilization > 1 ? r.utilization / 100 : r.utilization;
+        this.emit({ type: 'planLimit', limit: { status: r.status, window: r.rateLimitType, utilization: used, resetsAt: r.resetsAt } });
+        return;
+      }
+
       case 'result': {
         this.pendingTurns = Math.max(0, this.pendingTurns - 1);
+        if (this.sessionId && msg.modelUsage) this.onUsage?.(this.sessionId, msg.total_cost_usd ?? 0, msg.modelUsage, msg.duration_ms);
         const stopped = this.interrupted;
         this.interrupted = false;
         // Internal diagnostics ride along in errors; they mean nothing to the person reading.

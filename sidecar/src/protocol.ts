@@ -69,6 +69,7 @@ export type UiCommand =
   | { type: 'mergeWorktree'; project: string; path: string }
   | { type: 'discardWorktree'; project: string; path: string }
   | { type: 'send'; project: string; text: string; attachments?: Attachment[] }
+  | { type: 'resetUsage'; project: string }
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
   | { type: 'permissionReply'; project: string; id: string; decision: 'allow' | 'always' | 'deny'; message?: string }
@@ -243,6 +244,34 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** Cost, tokens, turns and time, added up. Costs are estimates, priced as the agent reports them. */
+export interface UsageTotals {
+  costUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  turns: number;
+  durationMs: number;
+}
+
+/** What a project has used since it was first opened here (or since its usage was reset). */
+export interface ProjectUsage {
+  since?: string; // ISO date of the first counted turn
+  total: UsageTotals;
+  today: UsageTotals;
+  days: { date: string; costUsd: number; tokens: number; turns: number }[]; // the last 14 days, oldest first
+  models: { model: string; costUsd: number; tokens: number }[];
+}
+
+/** Your subscription's usage limits, as the agent last reported them. */
+export interface PlanLimit {
+  status: 'allowed' | 'allowed_warning' | 'rejected';
+  window?: string; // five_hour, seven_day, ...
+  utilization?: number; // 0-1
+  resetsAt?: number; // seconds since the epoch
+}
+
 /** A slash command or skill: typing /name in a message runs it. */
 export interface CommandInfo {
   name: string;
@@ -280,6 +309,8 @@ export type ProjectEvent =
   | { type: 'mode'; mode: PermissionModeName }
   | { type: 'closed' }
   | { type: 'session'; info: SessionInfo }
+  | { type: 'usage'; usage: ProjectUsage }
+  | { type: 'planLimit'; limit: PlanLimit }
   | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers
   | { type: 'busy'; busy: boolean; status?: string | null }
   | { type: 'user'; text: string; action?: { kind: ItemAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point

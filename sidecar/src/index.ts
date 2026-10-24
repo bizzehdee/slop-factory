@@ -18,6 +18,7 @@ import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { addBug, addQuestion, addTask } from './capture.js';
+import { UsageLedger } from './usage.js';
 import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
 import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
 
@@ -41,7 +42,7 @@ if (process.env.ANTHROPIC_API_KEY && process.env.SLOP_FACTORY_ALLOW_API_KEY !== 
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -67,11 +68,13 @@ type Session = AgentSession | FakeSession;
 function newSession(dir: string, mode: PermissionModeName, out: (e: ProjectEvent) => void, provider: ProviderConfig, resume?: string): Session {
   const s = FAKE_AGENT ? new FakeSession(dir, mode, out, provider, resume) : new AgentSession(dir, mode, out, provider, resume);
   s.onSession = (id) => void providers.setSession(dir, id).catch(() => undefined);
+  s.onUsage = (id, cost, models, ms) => void usage.record(dir, id, cost, models, ms).then((u) => out({ type: 'usage', usage: u }), () => undefined);
   return s;
 }
 const loadConversation = (id: string, dir: string) => (FAKE_AGENT ? Promise.resolve(FakeSession.history(id)) : loadHistory(id, dir));
 const checkAuth = () => (FAKE_AGENT ? Promise.resolve({ loggedIn: true, method: 'fake' }) : authStatus());
 const providers = new ProviderStore();
+const usage = new UsageLedger();
 
 function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'openPermissions'>) {
   return (e: ProjectEvent): void => {
@@ -139,6 +142,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const priorities = new Priorities(dir);
   await priorities.load();
   out(queueEvent(priorities));
+  void usage.get(dir).then((u) => out({ type: 'usage', usage: u }), () => undefined);
 
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
   // Pick up the project's last conversation, showing what it said before.
@@ -307,6 +311,11 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'openUrl':
       if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
       return openInFileManager(cmd.url);
+    case 'resetUsage': {
+      const p = need(cmd.project);
+      p.out({ type: 'usage', usage: await usage.reset(p.dir) });
+      return;
+    }
     case 'send':
       if (cmd.text.trim() || cmd.attachments?.length) need(cmd.project).session.send(cmd.text, undefined, cmd.attachments);
       return;
