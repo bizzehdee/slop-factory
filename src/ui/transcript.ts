@@ -1,6 +1,7 @@
 import { renderProjects } from './chrome';
 import { h, md } from './dom';
 import { Proj, active, send } from './state';
+import { openSubagent } from './subagents';
 
 // ---------- transcript ----------
 
@@ -137,6 +138,18 @@ export function toolUse(p: Proj, id: string, name: string, input: unknown, paren
     ),
     h('pre', { class: 'tool-input' }, JSON.stringify(input, null, 2)),
   );
+  // A subagent's card links to its own transcript, once its task has shown up.
+  if (name === 'Agent' || name === 'Task') {
+    const view = h('button', { class: 'link-button agent-view', type: 'button' }, 'View subagent');
+    view.addEventListener('click', (ev) => {
+      // Inside the summary, so it shows while the card is folded; don't let it unfold the card.
+      ev.preventDefault();
+      ev.stopPropagation();
+      const proc = p.processes.find((x) => x.toolUseId === id);
+      if (proc) openSubagent(p, proc.id);
+    });
+    card.querySelector('.tool-line')!.append(view);
+  }
   p.toolCards.set(id, card);
   appendEntry(p, card);
 }

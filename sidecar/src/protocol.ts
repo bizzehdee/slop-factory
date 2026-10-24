@@ -61,7 +61,8 @@ export type UiCommand =
   | { type: 'listMcp'; project?: string }
   | { type: 'saveMcp'; project?: string; server: McpEntry; previous?: { name: string; scope: McpScope } }
   | { type: 'removeMcp'; project?: string; name: string; scope: McpScope }
-  | { type: 'restartSession'; project: string; fresh?: boolean } // fresh: a new conversation; otherwise the same one carries on
+  | { type: 'restartSession'; project: string; fresh?: boolean }
+  | { type: 'subagentLog'; project: string; agentId: string } // fresh: a new conversation; otherwise the same one carries on
   | { type: 'listWorktrees'; project: string }
   | { type: 'worktreeDiff'; project: string; path: string; requestId: string }
   | { type: 'mergeWorktree'; project: string; path: string }
@@ -202,6 +203,7 @@ export interface ProcessInfo {
   summary?: string;
   lastTool?: string;
   ambient?: boolean;
+  toolUseId?: string; // the tool call that started it (a subagent's Agent call)
 }
 
 export interface FrameworkInfo {
@@ -262,10 +264,11 @@ export type ProjectEvent =
   | { type: 'busy'; busy: boolean; status?: string | null }
   | { type: 'user'; text: string; action?: { kind: ItemAction; key: string } }
   | { type: 'assistantDelta'; msgId: string; index: number; text: string }
-  | { type: 'assistantText'; msgId: string; text: string; parent: string | null }
+  | { type: 'assistantText'; msgId: string; text: string; parent: string | null; agent?: string } // agent: the subagent (its task id) that said it
   | { type: 'thinking'; msgId: string; text: string }
-  | { type: 'toolUse'; id: string; name: string; input: unknown; parent: string | null }
-  | { type: 'toolResult'; toolUseId: string; isError: boolean; preview: string }
+  | { type: 'toolUse'; id: string; name: string; input: unknown; parent: string | null; agent?: string }
+  | { type: 'toolResult'; toolUseId: string; isError: boolean; preview: string; agent?: string }
+  | { type: 'subagentLog'; agentId: string; events: ProjectEvent[] } // a subagent's transcript, read from disk
   | { type: 'permissionRequest'; id: string; toolName: string; input: unknown; reason?: string }
   | { type: 'askQuestions'; id: string; questions: AskedQuestion[] } // closed by permissionResolved
   | { type: 'permissionResolved'; id: string }

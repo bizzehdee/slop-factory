@@ -56,6 +56,11 @@ export class FakeSession {
 
   onSession?: (id: string) => void;
   private sessionId = '';
+  private subagents = new Map<string, ProjectEvent[]>();
+
+  async subagentLog(agentId: string): Promise<ProjectEvent[]> {
+    return this.subagents.get(agentId) ?? [];
+  }
 
   /** Its conversations are kept like Claude Code's, one file each, so they can be picked up. */
   static history(id: string): ProjectEvent[] {
@@ -185,8 +190,21 @@ export class FakeSession {
       }
       if (lower.includes('subagent')) {
         const taskId = `task_${randomUUID().slice(0, 8)}`;
-        this.processes.started({ task_id: taskId, task_type: 'local_agent', description: 'Work in a worktree' });
+        const toolId = `tool_${taskId}`;
+        this.emit({ type: 'toolUse', id: toolId, name: 'Agent', input: { description: 'Work in a worktree', isolation: 'worktree' }, parent: null });
+        this.processes.started({ task_id: taskId, task_type: 'local_agent', description: 'Work in a worktree', tool_use_id: toolId });
+        // What the subagent says and does, tagged with it, as forwardSubagentText delivers it.
+        const said: ProjectEvent[] = [
+          { type: 'assistantText', msgId: `sub_${taskId}_1`, text: 'Reading the task and its spec.', parent: toolId, agent: taskId },
+          { type: 'toolUse', id: `sub_${taskId}_t`, name: 'Bash', input: { command: 'npm test' }, parent: toolId, agent: taskId },
+          { type: 'toolResult', toolUseId: `sub_${taskId}_t`, isError: false, preview: '12 passing', agent: taskId },
+        ];
+        this.subagents.set(taskId, said);
+        for (const e of said) this.emit(e);
         await this.sleep(lower.includes('slow') ? 3000 : 400);
+        const last: ProjectEvent = { type: 'assistantText', msgId: `sub_${taskId}_2`, text: 'All done; the work is committed on its branch.', parent: toolId, agent: taskId };
+        said.push(last);
+        this.emit(last);
         this.processes.ended({ task_id: taskId, status: 'completed', summary: 'Finished in its worktree.' });
         return this.reply('The subagent has finished.');
       }

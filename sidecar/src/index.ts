@@ -266,6 +266,10 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'restartSession':
       return restartSession(need(cmd.project), !!cmd.fresh);
+    case 'subagentLog': {
+      const p = need(cmd.project);
+      return p.out({ type: 'subagentLog', agentId: cmd.agentId, events: await p.session.subagentLog(cmd.agentId) });
+    }
     case 'listWorktrees': {
       const p = need(cmd.project);
       return p.out({ type: 'worktrees', list: await listWorktrees(p.dir) });

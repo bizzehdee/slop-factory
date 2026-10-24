@@ -47,6 +47,7 @@ export class ProcessTracker {
       startedAt: prev?.startedAt ?? Date.now(),
       endedAt: undefined,
       ambient: m.ambient,
+      toolUseId: m.tool_use_id ?? prev?.toolUseId,
     });
     this.emit();
   }

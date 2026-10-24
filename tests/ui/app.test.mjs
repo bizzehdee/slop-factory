@@ -245,3 +245,20 @@ test('a conversation carries on after the app restarts, until New conversation',
   await page.waitForTimeout(800);
   assert.equal(await page.locator('.msg.user:has-text("marmalade")').count(), 0);
 });
+
+test("a subagent's own transcript can be watched live, and read again after a reload", async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Run a slow subagent on this');
+  await page.keyboard.press('Enter');
+  await page.click('.proc.live:has-text("Work in a worktree") button:has-text("View")');
+  await page.waitForSelector('#docs-ref:has-text("Subagent · working")');
+  await page.waitForSelector('.agent-text:has-text("Reading the task and its spec.")');
+  assert.match(await page.textContent('.agent-step'), /Bash\s*npm test/);
+  // It keeps updating as the subagent works, then shows it finished.
+  await page.waitForSelector('.agent-text:has-text("All done")', { timeout: 10_000 });
+  await page.waitForSelector('#docs-ref:has-text("completed")');
+  await page.reload();
+  await page.waitForSelector('#project-header:not([hidden])');
+  await page.click('.tool-agent .agent-view');
+  await page.waitForSelector('.agent-text:has-text("All done")');
+});

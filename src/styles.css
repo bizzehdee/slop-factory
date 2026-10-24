@@ -2387,3 +2387,47 @@ textarea {
 .diff-lines .hunk {
   color: var(--muted);
 }
+
+/* ---------- subagent transcript ---------- */
+
+.agent-log {
+  display: grid;
+  gap: 10px;
+}
+.agent-text > :first-child {
+  margin-top: 0;
+}
+.agent-text > :last-child {
+  margin-bottom: 0;
+}
+.agent-step {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.agent-step code {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.agent-result {
+  margin: -6px 0 0 14px;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.agent-result.error {
+  color: var(--bug);
+}
+.agent-summary {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+}
+.agent-view {
+  margin-left: 8px;
+  font-family: var(--sans);
+  font-size: 0.75rem;
+}

@@ -12,6 +12,7 @@ import { onMcpServers } from './settings';
 import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
+import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 
 // ---------- events ----------
 
@@ -133,6 +134,7 @@ export function onEvent(e: SidecarEvent): void {
     case 'assistantDelta':
       return assistantDelta(p, e.msgId, e.index, e.text);
     case 'assistantText':
+      recordAgentEvent(p, e);
       assistantFinal(p, e.msgId, e.text, e.parent);
       if (e.parent) return;
       noteReply(p, e.msgId, e.text);
@@ -144,9 +146,13 @@ export function onEvent(e: SidecarEvent): void {
     case 'thinking':
       return;
     case 'toolUse':
+      recordAgentEvent(p, e);
       return toolUse(p, e.id, e.name, e.input, e.parent);
     case 'toolResult':
+      recordAgentEvent(p, e);
       return toolResult(p, e.toolUseId, e.isError, e.preview);
+    case 'subagentLog':
+      return onSubagentLog(p, e.agentId, e.events);
     case 'permissionRequest':
       permissionRequest(p, e.id, e.toolName, e.input, e.reason);
       break;
@@ -169,6 +175,7 @@ export function onEvent(e: SidecarEvent): void {
       p.processes = e.list;
       trackLane(p);
       if (ended && !p.replaying) refreshWorktrees(p);
+      if (docsView?.subagent && isActive) renderSubagentView(p);
       break;
     }
     case 'worktrees':

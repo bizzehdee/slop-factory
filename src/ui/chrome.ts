@@ -9,6 +9,7 @@ import { renderQuestions } from './questions';
 import { openSettings } from './settings';
 import { Proj, active, editorList, load, projects, providerList, providerOf, send, setActive, store } from './state';
 import { refreshWorktrees, renderWorktrees } from './worktrees';
+import { openSubagent } from './subagents';
 
 // ---------- projects list ----------
 
@@ -80,6 +81,7 @@ export function renderProcesses(): void {
         { class: 'proc-head' },
         h('span', { class: 'proc-kind' }, KIND_LABEL[x.kind] ?? x.rawType),
         h('span', { class: 'proc-time', dataset: { start: String(x.startedAt) } }, elapsed(x.startedAt, x.endedAt)),
+        x.kind === 'subagent' ? h('button', { class: 'button tiny quiet', type: 'button', title: `See what ${x.description} is doing`, onclick: () => openSubagent(p, x.id) }, 'View') : null,
         isLive
           ? h('button', { class: 'button tiny quiet', type: 'button', title: `Stop ${x.description}`, onclick: () => send({ type: 'stopProcess', project: p.dir, id: x.id }) }, 'Stop')
           : h('span', { class: 'proc-status' }, x.status),

@@ -1,4 +1,5 @@
 import {
+  getSubagentMessages,
   query,
   type Query,
   type SDKMessage,
@@ -10,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import type { AskedQuestion, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
+import { messagesToEvents } from './history.js';
 
 /** An async queue we hand to query() as its prompt, so one Claude Code session lives across many turns. */
 class InputQueue implements AsyncIterable<SDKUserMessage> {
@@ -89,6 +91,14 @@ export class AgentSession {
 
   /** Told the conversation's id once Claude Code starts, so it can be picked up later. */
   onSession?: (id: string) => void;
+  private sessionId?: string;
+
+  /** A subagent's transcript from Claude Code's files, for one the window didn't see live. */
+  async subagentLog(agentId: string): Promise<ProjectEvent[]> {
+    const id = this.sessionId ?? this.resume;
+    if (!id) return [];
+    return messagesToEvents((await getSubagentMessages(id, agentId, { dir: this.cwd })) as Parameters<typeof messagesToEvents>[0]).map((e) => ({ ...e, agent: agentId }) as ProjectEvent);
+  }
 
   start(): void {
     const { env, model } = sessionSettings(this.provider);
@@ -103,6 +113,8 @@ export class AgentSession {
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         permissionMode: this.permissionMode,
         includePartialMessages: true,
+        // Subagents' own text too, tagged with the subagent, so the window can show each one's transcript.
+        forwardSubagentText: true,
         // AskUserQuestion reaches canUseTool like any tool; the Questions panel renders it.
         canUseTool: (toolName, input, opts) => this.askPermission(toolName, input, opts),
         stderr: (data) => process.stderr.write(`[claude] ${data}`),
@@ -232,13 +244,14 @@ export class AgentSession {
 
       case 'assistant': {
         const parent = msg.parent_tool_use_id;
+        const agent = (msg as { agent_id?: string }).agent_id;
         for (const block of msg.message.content as unknown as { type: string; [k: string]: unknown }[]) {
-          if (block.type === 'text') this.emit({ type: 'assistantText', msgId: msg.message.id, text: String(block.text ?? ''), parent });
+          if (block.type === 'text') this.emit({ type: 'assistantText', msgId: msg.message.id, text: String(block.text ?? ''), parent, agent });
           else if (block.type === 'thinking' && !parent && block.thinking) this.emit({ type: 'thinking', msgId: msg.message.id, text: String(block.thinking) });
           else if (block.type === 'tool_use') {
             const id = String(block.id);
             this.processes.noteToolUse(id, block.input);
-            this.emit({ type: 'toolUse', id, name: String(block.name), input: block.input, parent });
+            this.emit({ type: 'toolUse', id, name: String(block.name), input: block.input, parent, agent });
           }
         }
         if (msg.error) this.emit({ type: 'notice', level: 'error', text: `The agent reported an error: ${msg.error}` });
@@ -248,9 +261,10 @@ export class AgentSession {
       case 'user': {
         const content = msg.message.content;
         if (!Array.isArray(content)) return;
+        const agent = (msg as { agent_id?: string }).agent_id;
         for (const block of content as { type: string; tool_use_id?: string; is_error?: boolean; content?: unknown }[]) {
           if (block.type === 'tool_result' && block.tool_use_id) {
-            this.emit({ type: 'toolResult', toolUseId: block.tool_use_id, isError: !!block.is_error, preview: resultPreview(block.content) });
+            this.emit({ type: 'toolResult', toolUseId: block.tool_use_id, isError: !!block.is_error, preview: resultPreview(block.content), agent });
           }
         }
         return;
@@ -287,6 +301,7 @@ export class AgentSession {
   private handleSystem(msg: Extract<SDKMessage, { type: 'system' }>): void {
     switch (msg.subtype) {
       case 'init':
+        this.sessionId = msg.session_id;
         if (msg.session_id) this.onSession?.(msg.session_id);
         this.emit({
           type: 'session',

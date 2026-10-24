@@ -42,6 +42,7 @@ export interface Proj {
   subagentLane: Set<string>; // queued keys that start in a background subagent
   laneRun?: LaneRun; // the subagent-lane item running now
   worktrees: WorktreeInfo[];
+  agentLogs: Map<string, Extract<ProjectEvent, { type: 'assistantText' | 'toolUse' | 'toolResult' }>[]>; // each subagent's own messages, by its task id
 }
 
 
@@ -111,5 +112,6 @@ export function newProject(dir: string, name: string): Proj {
     holdQueue: false,
     subagentLane: new Set(),
     worktrees: [],
+    agentLogs: new Map(),
   };
 }
