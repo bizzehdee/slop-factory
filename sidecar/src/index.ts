@@ -37,6 +37,12 @@ if (process.env.ANTHROPIC_API_KEY && process.env.SLOP_FACTORY_ALLOW_API_KEY !== 
   process.stderr.write('[desk] Ignoring ANTHROPIC_API_KEY so usage goes through your Claude login. Set SLOP_FACTORY_ALLOW_API_KEY=1 to keep it.\n');
 }
 
+// Started from a terminal where Claude Code is running, the app inherits that session's identity;
+// each project's agent is a session of its own, so drop it rather than join that conversation.
+for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION_ID', 'CLAUDE_CODE_REMOTE_SESSION_ID', 'CLAUDE_CODE_CHILD_SESSION', 'CLAUDE_CODE_SESSION_ATTENDED', 'CLAUDE_PID']) {
+  delete process.env[name];
+}
+
 // Events that make up the transcript are kept so a reloaded window can rebuild it.
 // State events (tasks, processes, ...) only need their latest value.
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
