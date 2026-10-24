@@ -3001,6 +3001,7 @@ textarea {
   display: grid;
   gap: 12px;
   margin-bottom: 14px;
+  padding: 0 20px; /* lined up with the session details below */
 }
 .gauges[hidden] {
   display: none;
