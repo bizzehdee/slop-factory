@@ -40,6 +40,11 @@ export function noteToolUse(p: Proj, name: string, input: unknown, parent: strin
   p.turnEdits.push(...editsOf(p, name, input));
 }
 
+export function clearQueuedTurns(p: Proj): void {
+  p.queuedTurns = [];
+  if (!p.turnEdits.length) p.turnUuid = undefined;
+}
+
 /** At the end of a turn that changed files, a line saying which, with Review and Undo. */
 export function endTurn(p: Proj): void {
   const uuid = p.turnUuid;

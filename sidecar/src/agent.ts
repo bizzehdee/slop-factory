@@ -292,7 +292,10 @@ export class AgentSession {
       }
 
       case 'result': {
-        this.pendingTurns = Math.max(0, this.pendingTurns - 1);
+        // Messages sent mid-turn can be folded into one turn, so one result can answer several:
+        // trust the count of sends still waiting when the agent reports it.
+        const waiting = (msg as { queued_turn_count?: number }).queued_turn_count;
+        this.pendingTurns = typeof waiting === 'number' ? waiting : Math.max(0, this.pendingTurns - 1);
         if (this.sessionId && msg.modelUsage) this.onUsage?.(this.sessionId, msg.total_cost_usd ?? 0, msg.modelUsage, msg.duration_ms);
         const stopped = this.interrupted;
         this.interrupted = false;

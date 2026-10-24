@@ -38,7 +38,8 @@ export function usageSummary(p: Proj): string | undefined {
 }
 
 export function limitText(l: PlanLimit): string {
-  const win = l.window ? WINDOW[l.window] ?? l.window.replace(/_/g, ' ') : 'usage';
+  // A limit this version doesn't know by name is just "your usage limit".
+  const win = (l.window && WINDOW[l.window]) || 'usage';
   const used = l.utilization != null ? `${Math.round(l.utilization * 100)}% of your ${win} limit used` : l.status === 'rejected' ? `${win} limit reached` : `Within your ${win} limit`;
   const reset = l.resetsAt ? `, resets ${new Date(l.resetsAt * 1000).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
   return used + reset;

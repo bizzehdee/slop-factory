@@ -14,7 +14,7 @@ import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, 
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
-import { endTurn, noteToolUse, onRewound, startTurn } from './changes';
+import { clearQueuedTurns, endTurn, noteToolUse, onRewound, startTurn } from './changes';
 import { renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
 
@@ -135,6 +135,8 @@ export function onEvent(e: SidecarEvent): void {
       }
       break;
     case 'busy': {
+      // Nothing left to answer: messages folded into an earlier turn won't get turns of their own.
+      if (!e.busy) clearQueuedTurns(p);
       const finished = p.busy && !e.busy;
       if (finished) markUnseen();
       p.busy = e.busy;

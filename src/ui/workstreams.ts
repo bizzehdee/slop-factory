@@ -162,7 +162,7 @@ export function renderWorkstreamsView(p: Proj | undefined): void {
                 ),
               ),
             ),
-            v.ws.touches ? h('p', { class: 'stream-touches' }, 'Touches ', h('code', {}, v.ws.touches)) : null,
+            v.ws.touches ? h('p', { class: 'stream-touches' }, `Touches: ${v.ws.touches}`) : null,
           );
         })
       : [h('div', { class: 'docs-empty' }, h('p', {}, `${file.rel} has no "## W1: name" streams.`))]),
