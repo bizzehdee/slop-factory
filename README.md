@@ -1,8 +1,9 @@
 # Slop Factory
 
-A desktop app for running a coding agent on your projects. Open a few projects side by side, see
-each one's delivery plan as a live board, hand the agent a task, a bug or a whole phase, and answer
-its questions without digging through the conversation.
+A desktop app for running coding agents on your projects. Open a few projects side by side, see
+each one's delivery plan as a live board, hand the agent a task, a bug, a whole phase or several
+streams of work at once, review what it changed, and answer its questions without digging through
+the conversation.
 
 ![Slop Factory with a project open: the delivery board on the left, the conversation in the middle, open questions on the right](docs/screenshots/overview.png)
 
@@ -38,7 +39,11 @@ The installers aren't signed yet. On macOS, open the app the first time with rig
 
 Open as many projects as you like. Each has its own agent, and work carries on in the ones you
 aren't looking at. Switch with the sidebar or Ctrl/Cmd+1–9; the sidebar shows which projects are
-working and which need you.
+working and which need you, and a desktop notification tells you when one you aren't looking at
+finishes or is waiting for an answer.
+
+Conversations carry on where they left off when you reopen the app. Choose **New conversation** in
+the project menu to start afresh.
 
 ## The delivery board
 
@@ -57,6 +62,8 @@ whoever changed them:
   unfinished, and each **Blocked by** reason. Click one to go to the blocker: another task or bug on
   the board, the open question it's waiting on, or the place the reason is written.
 - **Project summary.** Click the project's name to read its `plan.md`.
+- **Add things as they come up.** The **+** beside Delivery adds a task to a phase, reports a bug, or
+  records an open question, straight into the project's files with the next free number.
 
 Projects that keep one older-style `TASK.md` (sections of `TASK-001` entries with Deliverable,
 Scope and Acceptance criteria) work too: each section becomes a phase, and a task's details open
@@ -76,8 +83,59 @@ Every task, bug and phase has a ⋯ menu:
 
 Starting a **phase** works through its open tasks: the first starts and the rest queue behind it.
 Phases started in a subagent queue their tasks so each starts when the previous subagent finishes.
-Take anything off the queue with its **×** whenever you like. Pressing Stop pauses the queue until
-you start something again or choose **Start next**.
+The queue respects dependencies: a task that waits on another starts once that one is done, and
+whatever can go first goes first. Drag items in **Up next** into a new order (or use Alt+Up and
+Alt+Down), and take anything off with its **×** whenever you like. Pressing Stop pauses the queue
+until you start something again or choose **Start next**.
+
+### Subagents and their worktrees
+
+Work started in a subagent shows under **Processes** while it runs. **View** follows it live: what
+it says, the commands it runs and what they return.
+
+![A subagent's own steps, followed live beside the conversation](docs/screenshots/subagent.png)
+
+When it finishes, its branch appears under **Worktrees**. Open one to see its commits and the full
+diff, then **Merge** it into your branch, **Ask the agent to merge** (it commits loose ends, resolves
+conflicts and runs the tests), or **Discard** it.
+
+![A finished subagent's branch: its commit and diff, with Merge, Ask the agent to merge and Discard](docs/screenshots/worktree.png)
+
+## Several agents at once: workstreams
+
+When a project has work that doesn't overlap, separate agents can each take a stream of it at the
+same time. Streams are listed in `tasks/workstream.md`:
+
+- **No workstream file yet?** Choose **Find workstreams** on the board. The agent reads the tasks,
+  their specs and the code, groups the work that can run side by side without touching the same
+  files, and writes `tasks/workstream.md`. It doesn't start anything.
+- **Have one?** The board shows each stream's progress and whether it's ready, waiting on another
+  stream, running or done. **Run in parallel** lets you pick streams, and each starts in its own
+  subagent and worktree, working through its tasks in order. Review and merge each branch under
+  **Worktrees** when it's done.
+
+![Two workstreams ready to run, with their tasks and the code each touches](docs/screenshots/workstreams.png)
+
+You can write or edit `tasks/workstream.md` yourself; [Project settings](docs/configuration.md#workstreams-file-format)
+describes the format.
+
+## The conversation
+
+- **Attach files.** Drop or paste images, PDFs and text files onto the message box, or use the
+  paperclip. The agent sees images and PDFs as they are.
+- **Commands and skills.** Type `/` for the project's commands and skills, with what each does.
+
+![The message box with an image and a spec attached, and / listing commands](docs/screenshots/composer.png)
+
+- **What each turn changed.** When the agent edits files, the turn ends with the files it changed.
+  **Review** shows the edits; **Undo** puts those files back as they were before the turn.
+
+![The files a turn changed, reviewed beside the conversation, with Undo](docs/screenshots/changes.png)
+
+- **Search everything.** Ctrl/Cmd+K finds projects, tasks, bugs, phases, open questions, documents
+  and messages across every open project, and goes to the one you pick.
+
+![Ctrl+K searching for "invoice" across tasks, questions, documents and messages](docs/screenshots/palette.png)
 
 ## Questions
 
@@ -125,11 +183,21 @@ installed), shows the plan, copies the path or closes the project.
 
 ![The project menu with Open with listing the installed editors](docs/screenshots/project-menu.png)
 
+## Usage
+
+The Session panel shows what the project has used today and in all, and **Details** breaks it down:
+cost, tokens, turns and time, the last 14 days, and each model. On a local model it counts tokens
+only. While you're on your subscription it also shows how much of your current usage limit is
+used and when it resets, highlighted as you get close.
+
+![A project's usage: totals, the last 14 days, and tokens by kind and model](docs/screenshots/usage.png)
+
 ## Settings
 
 The gear beside Projects opens Settings:
 
 - **Appearance:** follow the system, or always light or dark.
+- **Notifications:** turn desktop notifications on or off.
 - **Model:** the model the current project uses, and your saved local models.
 - **MCP servers:** add, change or remove the tools and data sources the agent connects to, for all
   your projects, for one project and everyone who clones it, or for one project just for you.
@@ -174,6 +242,18 @@ text and placeholders, and recipes to start from.
 The **Up next** queue is kept in `.slop-factory/priorities.json` in the project. Commit it to share
 the queue, or add it to `.gitignore`.
 
+## Keyboard shortcuts
+
+| Keys | Does |
+|---|---|
+| Ctrl/Cmd+K | Search projects, tasks, questions, documents and messages |
+| Ctrl/Cmd+1–9 | Switch to the first nine projects |
+| Ctrl/Cmd+O | Open a folder |
+| Enter / Shift+Enter | Send / new line |
+| `/` | Commands and skills, in the message box |
+| Alt+Up / Alt+Down | Move an item in **Up next** |
+| Esc | Close the side panel or a menu |
+
 ## Good to know
 
 - **Billing.** On your subscription, Slop Factory ignores an `ANTHROPIC_API_KEY` in your
@@ -183,8 +263,7 @@ the queue, or add it to `.gitignore`.
   position.
 - **Your settings** are kept in `~/.slop-factory`. Settings from earlier versions (`~/.claude-desk`)
   move there by themselves.
-- **Conversations** last as long as the app is open; quitting ends them. A subagent's own steps show
-  folded under the step that started it.
+- **Usage figures** are estimates, kept in `~/.slop-factory/usage.json`; they aren't a bill.
 
 ## Building from source
 

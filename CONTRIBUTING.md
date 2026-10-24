@@ -31,11 +31,19 @@ This file is for working on Slop Factory itself. To use it, see the [README](REA
   `sidecar/src/mcp.ts` lists and changes MCP servers through it.
 - `sidecar/src/newproject.ts` creates projects and installs agent-framework;
   `sidecar/src/editors.ts` finds editors for **Open with**.
-- `sidecar/src/names.ts` holds the app's name, version and storage locations.
+- `sidecar/src/history.ts` rebuilds a resumed conversation's transcript from the SDK's stored
+  messages; `sidecar/src/attachments.ts` turns attached files into message blocks.
+- `sidecar/src/worktrees.ts` lists, diffs, merges and discards subagent worktrees;
+  `sidecar/src/capture.ts` adds tasks, bugs and open questions to the project's files;
+  `sidecar/src/usage.ts` keeps each project's usage tally.
+- `sidecar/src/fake-agent.ts` is the scripted agent the interface tests run against.
+- `sidecar/src/names.ts` holds the app's name, version, storage locations and the project's
+  `.slop-factory.json` (documented for users in [docs/configuration.md](docs/configuration.md)).
 - `sidecar/src/protocol.ts` is the whole message contract between the window and the sidecar.
 - `src/main.ts` starts the interface in `src/ui/`, written without a framework: `app.ts` wires it
   up, `events.ts` handles the sidecar's events, and each area has its own module (board, queue,
-  questions, docs, menus, settings and so on). `src/styles.css` holds the styles.
+  questions, docs, menus, settings, worktrees, subagents, changes, composer, palette, usage,
+  workstreams and so on). `src/styles.css` holds the styles.
 
 ## Requirements
 
