@@ -86,6 +86,7 @@ export type UiCommand =
   | { type: 'gitInit'; project: string }
   | { type: 'gitCommit'; project: string } // asks the agent to commit what's uncommitted
   | { type: 'setAutoPull'; project: string; on: boolean }
+  | { type: 'setModel'; project: string; model: string | null } // null: the provider's default
   | { type: 'frameworkCheck'; project: string } // check now, against a freshly updated copy
   | { type: 'frameworkUpgrade'; project: string }
   | { type: 'frameworkDismiss'; project: string } // "not now", until agent-framework changes again
@@ -266,6 +267,14 @@ export interface FrameworkInfo {
   hooks: string[]; // hook event names configured in project settings
 }
 
+/** A model the project's agent can switch to: the subscription's, or what a local server has. */
+export interface ModelOption {
+  value: string; // what the agent is told: an alias ('sonnet'), a full id, or a local server's name
+  label: string;
+  description?: string;
+  older?: boolean; // an earlier version, listed apart
+}
+
 export interface SessionInfo {
   model: string;
   cwd: string;
@@ -428,7 +437,8 @@ export type ProjectEvent =
   | { type: 'worktreeDiff'; path: string; requestId: string; diff: string } // subagent: the keys in the subagent lane
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }
   | { type: 'replayDone' }
-  | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string };
+  | { type: 'notice'; level: 'info' | 'warn' | 'error'; text: string; action?: 'newConversation' } // action: a button beside the text
+  | { type: 'models'; models: ModelOption[]; current: string | null; error?: string }
 
 /** Events not tied to one project. */
 export type GlobalEvent =

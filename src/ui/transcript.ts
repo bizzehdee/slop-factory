@@ -1,4 +1,4 @@
-import { renderProjects } from './chrome';
+import { newConversation, renderProjects } from './chrome';
 import { h, md } from './dom';
 import { Proj, active, send } from './state';
 import { openSubagent } from './subagents';
@@ -278,6 +278,7 @@ export function markAnswered(p: Proj, id: string, outcome: string): void {
   renderProjects();
 }
 
-export function notice(p: Proj, level: 'info' | 'warn' | 'error', text: string): void {
-  appendEntry(p, h('div', { class: `notice ${level}`, role: level === 'error' && !p.replaying ? 'alert' : undefined }, text));
+export function notice(p: Proj, level: 'info' | 'warn' | 'error', text: string, action?: 'newConversation'): void {
+  const button = action === 'newConversation' ? h('button', { class: 'link-button', type: 'button', onclick: () => newConversation(p) }, 'Start a new conversation') : null;
+  appendEntry(p, h('div', { class: `notice ${level}`, role: level === 'error' && !p.replaying ? 'alert' : undefined }, text, button ? ' ' : '', button));
 }

@@ -136,6 +136,13 @@ export function onEvent(e: SidecarEvent): void {
       p.git = e.info;
       if (isActive) renderGit();
       return;
+    case 'models':
+      p.models = { list: e.models, current: e.current, error: e.error };
+      if (isActive) {
+        renderComposer();
+        renderSession();
+      }
+      return;
     case 'framework':
       p.frameworkStatus = e.status;
       if (isActive) renderFramework();
@@ -280,7 +287,7 @@ export function onEvent(e: SidecarEvent): void {
       }
       return;
     case 'notice':
-      notice(p, e.level, e.text);
+      notice(p, e.level, e.text, e.action);
       break;
   }
 

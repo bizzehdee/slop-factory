@@ -1,6 +1,6 @@
 import { createBridge } from '../bridge';
 import type { PermissionModeName } from '../../sidecar/src/protocol';
-import { activate, projectMenu, renderAll, renderComposer } from './chrome';
+import { activate, newConversation, projectMenu, renderAll, renderComposer } from './chrome';
 import { closeDocs } from './docs';
 import { $ } from './dom';
 import { onEvent, pendingOpen, restoreActive, setPendingOpen, setRestoreActive } from './events';
@@ -110,6 +110,11 @@ export async function init(): Promise<void> {
     active.mode = (ev.target as HTMLSelectElement).value as PermissionModeName;
     send({ type: 'setPermissionMode', project: active.dir, mode: active.mode });
   });
+  $('model-picker').addEventListener('change', (ev) => {
+    if (!active) return;
+    send({ type: 'setModel', project: active.dir, model: (ev.target as HTMLSelectElement).value });
+  });
+  $('new-conversation').addEventListener('click', () => active && newConversation(active));
   $('docs-close').addEventListener('click', closeDocs);
   $('project-menu').addEventListener('click', (ev) => {
     ev.stopPropagation();

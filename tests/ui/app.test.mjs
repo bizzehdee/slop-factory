@@ -253,8 +253,8 @@ test('a conversation carries on after the app restarts, until New conversation',
   await page.waitForSelector('.msg.user:has-text("Remember the word marmalade")');
   await page.waitForSelector('.notice:has-text("Picked up where you left off")');
   assert.equal(await page.locator('.notice.error').count(), 0, 'no errors while the project reopens');
-  await page.click('#project-menu');
-  await page.click('#menu .menu-item:has-text("New conversation")');
+  // The notice says how to start afresh, with a button for it.
+  await page.click('.notice:has-text("Picked up where you left off") button:has-text("Start a new conversation")');
   await page.waitForSelector('.notice:has-text("Started a new conversation.")');
   await page.close();
   await app.restartSidecar();
@@ -456,7 +456,7 @@ test("each project's usage is counted and shown, with the plan's limit", async (
     await page.waitForSelector(`.msg.assistant:has-text("Done: ${text}")`);
   }
   // The session shows the gauges and the model, at the foot of the sidebar.
-  await page.waitForSelector('#session dd:has-text("fake-model")');
+  await page.waitForSelector('#session dd:has-text("Fake Opus")');
   assert.deepEqual(await page.$$eval('#session dt', (els) => els.map((e) => e.textContent)), ['Model']);
   const [section, pane] = await Promise.all([page.locator('.session-section').boundingBox(), page.locator('.side-pane').boundingBox()]);
   assert.ok(Math.abs(section.y + section.height - (pane.y + pane.height)) < 2, 'the session sits at the bottom of the sidebar');
@@ -476,7 +476,7 @@ test("each project's usage is counted and shown, with the plan's limit", async (
   assert.equal(await page.locator('.usage-day').count(), 14);
   // It's still there after a reload, and can be reset.
   await page.reload();
-  await page.waitForSelector('#session dd:has-text("fake-model")');
+  await page.waitForSelector('#session dd:has-text("Fake Opus")');
   page.once('dialog', (d) => d.accept());
   await openUsage();
   await page.waitForSelector('.usage-stats:has-text("$0.50")');
@@ -616,7 +616,7 @@ test("a local model's context gauge is sized by its server, with no subscription
   // A stand-in llama.cpp server: its models, and the context each slot gets.
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen3-coder' }] }));
+    if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen3-coder' }, { id: 'gemma-4' }] }));
     if (req.url === '/props') return res.end(JSON.stringify({ default_generation_settings: { n_ctx: 32768 } }));
     res.statusCode = 404;
     res.end('{}');
@@ -638,6 +638,14 @@ test("a local model's context gauge is sized by its server, with no subscription
     await page.waitForSelector('#gauges .gauge[aria-label="Context"]');
     assert.match(await page.textContent('#gauges'), /24k \/ 33k.*Window size from llama\.cpp/);
     assert.equal(await page.locator('#gauges .gauge').count(), 1, 'only the context: a local model has no subscription limits');
+    // The picker lists the server's models, and switching restarts the agent on the other one.
+    await idle(page);
+    assert.deepEqual(await page.$$eval('#model-picker option', (els) => els.map((e) => e.value)), ['gemma-4', 'qwen3-coder']);
+    assert.equal(await page.inputValue('#model-picker'), 'qwen3-coder');
+    await page.selectOption('#model-picker', 'gemma-4');
+    await page.waitForSelector('.notice:has-text("Switched to gemma-4. The conversation carries on.")');
+    await page.waitForFunction(() => document.querySelector('#model-picker').value === 'gemma-4');
+    await page.waitForSelector('#session dd:has-text("gemma-4")');
   } finally {
     server.close();
   }
@@ -865,5 +873,34 @@ test("an out-of-date agent-framework is offered as an upgrade, which can wait un
   const after = await readFile(path.join(dir, 'AGENTS.md'), 'utf8');
   assert.match(after, /### Bugs\n\nOne heading per bug in tasks\/bugs\.md\.\n\n## Our own rules\n\nUse tabs\.\n$/);
   assert.doesNotMatch(after, /aaaa1111/);
+  assert.deepEqual(page.errors, []);
+});
+
+test('the model can be switched, earlier versions too, and the choice sticks; New conversation is to hand', async () => {
+  const dir = await app.project();
+  let page = await app.open(dir);
+  await page.waitForSelector('#model-picker:not([disabled])');
+  assert.equal(await page.inputValue('#model-picker'), 'default');
+  assert.deepEqual(await page.$$eval('#model-picker > option', (els) => els.map((e) => e.textContent)), ['Default (recommended)', 'Fake Opus', 'Fake Sonnet']);
+  assert.deepEqual(await page.$$eval('#model-picker optgroup[label="Earlier versions"] option', (els) => els.map((e) => e.value)), ['claude-fake-opus-old']);
+  await page.waitForSelector('#session dd:has-text("Fake Opus")');
+
+  await page.selectOption('#model-picker', 'sonnet');
+  await page.waitForSelector('.notice:has-text("Switched to Fake Sonnet for the replies from here on.")');
+  await page.waitForSelector('#session dd:has-text("Fake Sonnet")');
+
+  // After a restart the project starts on the model it picked.
+  await page.close();
+  await app.restartSidecar();
+  page = await app.open(dir);
+  await page.waitForSelector('#model-picker:not([disabled])');
+  assert.equal(await page.inputValue('#model-picker'), 'sonnet');
+
+  // Back to the default, and a new conversation from the composer.
+  await page.selectOption('#model-picker', 'default');
+  await page.waitForSelector('.notice:has-text("Switched to Default (recommended)")');
+  await page.click('#new-conversation');
+  await page.waitForSelector('.notice:has-text("Started a new conversation.")');
+  await page.waitForFunction(() => document.querySelector('#model-picker').value === 'default');
   assert.deepEqual(page.errors, []);
 });

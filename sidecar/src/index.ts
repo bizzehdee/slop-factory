@@ -24,7 +24,7 @@ import { FrameworkMonitor } from './frameworkupdate.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
-import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
+import type { ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
 
 fixPath();
 
@@ -59,7 +59,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'models', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -185,7 +185,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const previous = providers.sessionFor(dir);
   const history = previous ? await loadConversation(previous, dir).catch(() => []) : [];
   for (const e of history) out(e);
-  if (history.length) out({ type: 'notice', level: 'info', text: 'Picked up where you left off. Choose New conversation in the project menu to start afresh.' });
+  if (history.length) out({ type: 'notice', level: 'info', text: 'Picked up where you left off.', action: 'newConversation' });
   const session = newSession(dir, mode, out, provider, history.length ? previous : undefined);
   const git = new GitMonitor(dir, {
     fetchMinutes: () => providers.fetchMinutes,
@@ -215,6 +215,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   tasks.start();
   session.processes.clear();
   session.start();
+  void sendModels(project);
   const first = firstMessages.get(dir);
   if (first) {
     firstMessages.delete(dir);
@@ -258,9 +259,58 @@ async function startTask(p: Project, prompt: string, action: { kind: SentAction;
 }
 
 /** Restart a project's agent: so it picks up changed MCP servers (same conversation), or to start afresh. */
-async function restartSession(p: Project, fresh: boolean): Promise<void> {
+/**
+ * The models the project can switch to: what the subscription offers, by alias and then earlier
+ * versions, or what the local server has.
+ */
+async function sendModels(p: Project): Promise<void> {
+  const session = p.session;
+  const provider = session.provider;
+  const local = provider.kind !== 'subscription';
+  try {
+    let models: ModelOption[];
+    if (local) {
+      const names = provider.baseUrl ? await probeModels(provider.baseUrl, provider.authToken) : [];
+      // The configured model stays listed, though the server didn't name it.
+      if (provider.model && !names.includes(provider.model)) names.unshift(provider.model);
+      models = names.map((n) => ({ value: n, label: n }));
+    } else {
+      models = (await session.supportedModels()).map((m) => ({ value: m.value, label: m.displayName, description: m.description, older: m.value.startsWith('claude-') }));
+    }
+    if (p.session !== session) return; // restarted meanwhile: the new session sends its own
+    p.out({ type: 'models', models, current: local ? (provider.model ?? null) : (provider.model ?? 'default') });
+  } catch (err) {
+    if (p.session === session) p.out({ type: 'models', models: [], current: provider.model ?? null, error: err instanceof Error ? err.message : String(err) });
+  }
+}
+
+/**
+ * Switch the project's model. On the subscription it changes for the replies from here on; a local
+ * model restarts the agent on it, carrying the conversation on, so its context window is the new
+ * model's. While the agent is working, a local model changes like the subscription's, and the rest
+ * follows at the next start.
+ */
+async function switchModel(p: Project, model: string | null): Promise<void> {
+  const base = providers.get(p.session.provider.id);
+  const chosen = model === 'default' ? null : model;
+  await providers.setModel(p.dir, base.id, chosen);
+  const local = base.kind !== 'subscription';
+  const value = chosen ?? (local ? base.model : undefined);
+  if (local && !p.session.busy) {
+    await restartSession(p, false, `Switched to ${value}. The conversation carries on.`);
+    return;
+  }
+  await p.session.setModel(value);
+  p.session.provider = { ...p.session.provider, model: value };
+  void sendModels(p);
+  const label = (p.latest.get('models') as Extract<ProjectEvent, { type: 'models' }> | undefined)?.models.find((m) => m.value === (chosen ?? 'default'))?.label ?? value ?? 'the default model';
+  p.out({ type: 'notice', level: 'info', text: `Switched to ${label} for the replies from here on.` });
+}
+
+async function restartSession(p: Project, fresh: boolean, note?: string): Promise<void> {
   const mode = p.session.mode;
-  const provider = await withContext(p.session.provider);
+  // The project's provider as it's set now, with the model it picked.
+  const provider = await withContext(providers.forProject(p.dir));
   p.session.close();
   const resume = fresh ? undefined : providers.sessionFor(p.dir);
   if (fresh) void providers.setSession(p.dir, undefined);
@@ -268,7 +318,8 @@ async function restartSession(p: Project, fresh: boolean): Promise<void> {
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
-  p.out({ type: 'notice', level: 'info', text: fresh ? 'Started a new conversation.' : 'Restarted the agent. The conversation carries on.' });
+  void sendModels(p);
+  p.out({ type: 'notice', level: 'info', text: note ?? (fresh ? 'Started a new conversation.' : 'Restarted the agent. The conversation carries on.') });
 }
 
 /** Restart a project's Claude Code session on another provider. The task board keeps running. */
@@ -281,6 +332,7 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
+  void sendModels(p);
   p.out({ type: 'provider', providerId: provider.id });
   p.out({
     type: 'notice',
@@ -447,6 +499,8 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).git.push().catch(failed("Couldn't push"));
     case 'gitInit':
       return need(cmd.project).git.init().catch(failed("Couldn't make this a git repository"));
+    case 'setModel':
+      return switchModel(need(cmd.project), cmd.model);
     case 'frameworkCheck':
       return need(cmd.project).framework.check(true);
     case 'frameworkUpgrade':

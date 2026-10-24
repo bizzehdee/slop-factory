@@ -1010,6 +1010,10 @@ textarea {
 }
 .composer-hint {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   color: var(--faint);
   font-size: 0.75rem;
   text-align: right;
@@ -1028,6 +1032,28 @@ textarea {
 .mode select:hover {
   color: var(--text);
   border-color: var(--faint);
+}
+.mode select:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.mode-button {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 3px 12px;
+  font-size: var(--step--1);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mode-button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--faint);
+}
+.mode-button:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .round-button {

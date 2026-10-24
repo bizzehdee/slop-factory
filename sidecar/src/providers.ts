@@ -27,6 +27,7 @@ interface DeskState {
   activeProject?: string; // the one that was showing
   prefs?: Record<string, string>; // the window's settings: theme, notifications, where new projects go
   projectTaskStart?: Record<string, TaskStart>; // projects whose tasks start differently from the default
+  projectModel?: Record<string, { provider: string; model: string }>; // the model each project picked, on the provider it was picked for
   frameworkDismissed?: Record<string, string>; // the agent-framework version each project said "not now" to
 }
 
@@ -55,6 +56,7 @@ export class ProviderStore {
         openProjects: Array.isArray(raw.openProjects) ? raw.openProjects.filter((d: unknown) => typeof d === 'string') : undefined,
         activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
         projectTaskStart: raw.projectTaskStart && typeof raw.projectTaskStart === 'object' ? Object.fromEntries(Object.entries(raw.projectTaskStart).filter(([, v]) => TASK_STARTS.includes(v as TaskStart))) as Record<string, TaskStart> : undefined,
+        projectModel: raw.projectModel && typeof raw.projectModel === 'object' ? Object.fromEntries(Object.entries(raw.projectModel).filter(([, v]) => !!v && typeof (v as { provider?: unknown }).provider === 'string' && typeof (v as { model?: unknown }).model === 'string')) as Record<string, { provider: string; model: string }> : undefined,
         frameworkDismissed: raw.frameworkDismissed && typeof raw.frameworkDismissed === 'object' ? Object.fromEntries(Object.entries(raw.frameworkDismissed).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
         prefs: raw.prefs && typeof raw.prefs === 'object' ? Object.fromEntries(Object.entries(raw.prefs).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
       };
@@ -71,8 +73,11 @@ export class ProviderStore {
     return this.list().find((p) => p.id === id) ?? SUBSCRIPTION;
   }
 
+  /** The project's provider, with the model the project picked on it, if it picked one. */
   forProject(dir: string): ProviderConfig {
-    return this.get(this.state.projectProvider[dir]);
+    const p = this.get(this.state.projectProvider[dir]);
+    const model = this.modelFor(dir, p.id);
+    return model ? { ...p, model } : p;
   }
 
   async setForProject(dir: string, id: string): Promise<ProviderConfig> {
@@ -80,7 +85,7 @@ export class ProviderStore {
     if (p.id === SUBSCRIPTION.id) delete this.state.projectProvider[dir];
     else this.state.projectProvider[dir] = p.id;
     await this.save();
-    return p;
+    return this.forProject(dir);
   }
 
   /** The conversation a project picks up when it opens again. */
@@ -150,6 +155,20 @@ export class ProviderStore {
     if (mode && TASK_STARTS.includes(mode)) map[dir] = mode;
     else delete map[dir];
     this.state.projectTaskStart = map;
+    await this.save();
+  }
+
+  /** The model this project picked on this provider, if it picked one. */
+  modelFor(dir: string, providerId: string): string | undefined {
+    const m = this.state.projectModel?.[dir];
+    return m?.provider === providerId ? m.model : undefined;
+  }
+
+  async setModel(dir: string, providerId: string, model: string | null): Promise<void> {
+    const map = { ...(this.state.projectModel ?? {}) };
+    if (model) map[dir] = { provider: providerId, model };
+    else delete map[dir];
+    this.state.projectModel = map;
     await this.save();
   }
 
@@ -254,7 +273,8 @@ function isProvider(x: unknown): x is ProviderConfig {
  * Local: point every model role at the chosen model so nothing tries to reach Anthropic.
  */
 export function sessionSettings(p: ProviderConfig): { env?: Record<string, string | undefined>; model?: string } {
-  if (p.kind === 'subscription' || !p.baseUrl || !p.model) return {};
+  if (p.kind === 'subscription') return p.model ? { model: p.model } : {};
+  if (!p.baseUrl || !p.model) return {};
   const small = p.smallModel || p.model;
   const env: Record<string, string | undefined> = {
     ...process.env,

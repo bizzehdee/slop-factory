@@ -114,7 +114,10 @@ export function renderSession(): void {
   renderGauges(p);
   // Just the model beside the gauges; usage and cost are under Usage in the project menu.
   const rows: [string, Node | string][] = [];
-  if (p) rows.push(['Model', p.session?.model ?? h('span', { class: 'muted' }, 'Known once the agent starts, with your first message')]);
+  // The picker's choice by name once the list is in; a switch mid-conversation doesn't restart the session.
+  const picked = p?.models?.list.find((o) => o.value === p.models?.current);
+  const name = picked ? (picked.value === 'default' ? picked.description?.split(' · ')[0] ?? picked.label : picked.label) : p?.session?.model;
+  if (p) rows.push(['Model', name ?? h('span', { class: 'muted' }, 'Known once the agent starts, with your first message')]);
   $('session').replaceChildren(...rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)]));
 }
 
@@ -124,6 +127,31 @@ export function closeProject(p: Proj): void {
   send({ type: 'close', project: p.dir });
 }
 
+export function newConversation(p: Proj): void {
+  if (p.busy && !confirm(`The agent is working in ${p.name}. Stop it and start a new conversation?`)) return;
+  send({ type: 'restartSession', project: p.dir, fresh: true });
+}
+
+/** The models the project can switch to: the current ones first, earlier versions apart. */
+function renderModelPicker(p: Proj | undefined): void {
+  const sel = $<HTMLSelectElement>('model-picker');
+  const m = p?.models;
+  const opt = (o: { value: string; label: string; description?: string }) => h('option', { value: o.value, title: o.description ?? '' }, o.label);
+  if (!m?.list.length) {
+    sel.replaceChildren(h('option', { value: '' }, m?.error ? 'Models unavailable' : 'Model'));
+    sel.disabled = true;
+    sel.title = m?.error ? `Couldn’t list the models: ${m.error}` : 'The models are listed once the agent has started';
+    return;
+  }
+  const current = m.list.filter((o) => !o.older);
+  const older = m.list.filter((o) => o.older);
+  sel.replaceChildren(...current.map(opt), older.length ? h('optgroup', { label: 'Earlier versions' }, ...older.map(opt)) : '');
+  sel.disabled = false;
+  if (m.current) sel.value = m.current;
+  const chosen = m.list.find((o) => o.value === sel.value);
+  sel.title = chosen?.description ? `${chosen.label}: ${chosen.description}` : 'Which model the agent uses';
+}
+
 export function projectMenu(p: Proj): MenuItem[] {
   const editors: MenuItem[] = editorList.length
     ? editorList.map((e) => ({ label: e.name, run: () => send({ type: 'openWith', project: p.dir, editor: e.id }) }))
@@ -131,13 +159,7 @@ export function projectMenu(p: Proj): MenuItem[] {
   const items: MenuItem[] = [
     { label: 'Open directory', run: () => send({ type: 'openFolder', project: p.dir }) },
     { label: 'Open with', submenu: editors },
-    {
-      label: 'New conversation',
-      run: () => {
-        if (p.busy && !confirm(`The agent is working in ${p.name}. Stop it and start a new conversation?`)) return;
-        send({ type: 'restartSession', project: p.dir, fresh: true });
-      },
-    },
+    { label: 'New conversation', run: () => newConversation(p) },
   ];
   if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
   items.push({ label: 'Usage', run: () => openUsage(p) });
@@ -204,6 +226,8 @@ export function renderComposer(): void {
       : p?.mode === 'bypassPermissions'
         ? 'Every action runs without asking (--dangerously-skip-permissions). Auto mode is the safer hands-off choice.'
         : 'How the agent asks before acting';
+  renderModelPicker(p);
+  $<HTMLButtonElement>('new-conversation').disabled = !p;
   const prov = $<HTMLSelectElement>('provider');
   prov.disabled = !p;
   prov.replaceChildren(...providerList.map((x) => h('option', { value: x.id }, x.name)));

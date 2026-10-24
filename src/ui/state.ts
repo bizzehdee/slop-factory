@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
+import type { AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ModelOption, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 import type { FileEdit } from './changes';
@@ -55,6 +55,7 @@ export interface Proj {
   commands: CommandInfo[]; // what the "/" picker offers
   usage?: ProjectUsage;
   git?: GitInfo;
+  models?: { list: ModelOption[]; current: string | null; error?: string }; // what the model picker offers
   frameworkStatus?: FrameworkStatus; // whether its agent-framework is the current one
   gauges?: Gauges;
   taskStart?: TaskStart | null; // this project's own choice of where tasks start; null: the default

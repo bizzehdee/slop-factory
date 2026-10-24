@@ -85,6 +85,11 @@
                   <option value="bypassPermissions" title="Same as --dangerously-skip-permissions: every action runs without asking">Skip all permission checks</option>
                 </select>
               </label>
+              <label class="mode">
+                <span class="visually-hidden">Model</span>
+                <select id="model-picker" title="Which model the agent uses" disabled></select>
+              </label>
+              <button id="new-conversation" type="button" class="mode-button" title="Start the conversation afresh: the agent forgets this one" disabled>New conversation</button>
               <span class="composer-hint">/ for commands · Shift+Enter for a new line</span>
               <button id="stop" type="button" class="round-button stop" title="Stop the agent" aria-label="Stop the agent" hidden>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="4" width="8" height="8" rx="1.5" /></svg>

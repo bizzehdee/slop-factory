@@ -44,8 +44,16 @@ working and which need you, and a desktop notification tells you when one you ar
 finishes or is waiting for an answer.
 
 Quit with projects open and they're open again next time, on the one you were looking at, each
-conversation carrying on where it left off. Choose **New conversation** in
-the project menu to start afresh.
+conversation carrying on where it left off. **New conversation**, beside the message box, starts
+afresh.
+
+## Models
+
+The model picker beside the message box switches the project's model. On your subscription it
+lists the current models (Opus, Sonnet, Fable, Haiku and the recommended default), with earlier
+versions further down, and the switch applies from the next reply, mid-conversation. On a local
+model it lists the models the server has; switching restarts the agent on the new one, carrying the
+conversation on, so the context window is the new model's. Each project remembers its choice.
 
 ## The delivery board
 

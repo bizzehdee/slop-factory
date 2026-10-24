@@ -52,10 +52,11 @@ export class FakeSession {
     private cwd: string,
     private permissionMode: PermissionModeName,
     private emit: (e: ProjectEvent) => void,
-    readonly provider: ProviderConfig = SUBSCRIPTION,
+    public provider: ProviderConfig = SUBSCRIPTION, // its model follows a switch made while it runs
     private resume?: string,
   ) {
     this.processes = new ProcessTracker((list) => this.emit({ type: 'processes', list }));
+    this.model = provider.model ?? 'fake-model';
   }
 
   onSession?: (id: string) => void;
@@ -86,13 +87,34 @@ export class FakeSession {
     appendFileSync(path.join(dir, `${this.sessionId}.jsonl`), JSON.stringify({ type, uuid: randomUUID(), message, parent_tool_use_id: null }) + '\n');
   }
 
+  private model: string;
+
+  /** Like the subscription's list: the current models by alias, then earlier versions by id. */
+  async supportedModels(): Promise<{ value: string; displayName: string; description: string; resolvedModel?: string }[]> {
+    return [
+      { value: 'default', displayName: 'Default (recommended)', description: 'Fake Opus · The usual choice', resolvedModel: 'fake-opus' },
+      { value: 'opus', displayName: 'Fake Opus', description: 'The usual choice', resolvedModel: 'fake-opus' },
+      { value: 'sonnet', displayName: 'Fake Sonnet', description: 'Quicker', resolvedModel: 'fake-sonnet' },
+      { value: 'claude-fake-opus-old', displayName: 'Fake Opus (earlier)', description: 'An earlier version' },
+    ];
+  }
+
+  async setModel(model: string | undefined): Promise<void> {
+    this.model = model ?? this.provider.model ?? 'fake-model';
+    this.emitSession();
+  }
+
   start(): void {
     this.sessionId = this.resume ?? randomUUID();
     this.onSession?.(this.sessionId);
+    this.emitSession();
+  }
+
+  private emitSession(): void {
     this.emit({
       type: 'session',
       info: {
-        model: 'fake-model',
+        model: this.model,
         cwd: this.cwd,
         apiKeySource: 'none',
         claudeCodeVersion: 'fake',

@@ -4,6 +4,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKUserMessage,
+  type ModelInfo,
   type PermissionResult,
   type PermissionUpdate,
 } from '@anthropic-ai/claude-agent-sdk';
@@ -86,7 +87,7 @@ export class AgentSession {
     private cwd: string,
     private permissionMode: PermissionModeName,
     private emit: (e: ProjectEvent) => void,
-    readonly provider: ProviderConfig = SUBSCRIPTION,
+    public provider: ProviderConfig = SUBSCRIPTION, // its model follows a switch made while it runs
     private resume?: string, // a conversation to pick up
   ) {
     this.processes = new ProcessTracker((list) => this.emit({ type: 'processes', list }));
@@ -103,6 +104,16 @@ export class AgentSession {
     const id = this.sessionId ?? this.resume;
     if (!id) return [];
     return messagesToEvents((await getSubagentMessages(id, agentId, { dir: this.cwd })) as Parameters<typeof messagesToEvents>[0]).map((e) => ({ ...e, agent: agentId }) as ProjectEvent);
+  }
+
+  /** The models Claude Code offers on this login, once it has started. */
+  async supportedModels(): Promise<ModelInfo[]> {
+    return this.q ? this.q.supportedModels() : [];
+  }
+
+  /** The model for the replies from here on; undefined goes back to the default. */
+  async setModel(model: string | undefined): Promise<void> {
+    await this.q?.setModel(model);
   }
 
   start(): void {
