@@ -716,6 +716,45 @@ test('usage adds each turn once, across restarts and resets, by day and model', 
   }
 });
 
+test('workstreams come from "## W<n>: name" sections, and start together in one message', async () => {
+  const { parseTaskFile } = await import('../dist/tasks.js');
+  const { workstreamsPrompt, DEFAULT_PROMPTS } = await import('../dist/actions.js');
+  const src = [
+    '# Workstreams',
+    '',
+    '## W1: Export API',
+    '- Tasks: T12, T13, B4',
+    '- Touches: `server/export/`',
+    '- Waits on: none',
+    '',
+    '## W2 - Export screen',
+    '- **Waits on:** W1 (T13)',
+    '- [ ] T14',
+    '- [ ] T15: the list under the heading counts when there is no Tasks line',
+    '',
+    '```markdown',
+    '## W9: an example in a fence',
+    '```',
+    '',
+    '## Not in a stream',
+    '- T16: has to run alone',
+    '',
+    '## Revision history',
+  ].join('\n');
+  const file = parseTaskFile(src, 'tasks/workstream.md');
+  assert.equal(file.kind, 'workstreams');
+  assert.deepEqual(file.workstreams, [
+    { id: 'W1', name: 'Export API', tasks: ['T12', 'T13', 'B4'], touches: 'server/export/', waitsOn: [], line: 2 },
+    { id: 'W2', name: 'Export screen', tasks: ['T14', 'T15'], waitsOn: ['W1'], line: 7 },
+  ]);
+  const text = workstreamsPrompt(file.workstreams, new Map([['T12', 'Export endpoint']]), 'tasks/workstream.md', {});
+  assert.match(text, /^Run these workstreams from tasks\/workstream\.md at the same time/);
+  assert.match(text, /- W1: Export API\. Tasks, in order: T12 \(Export endpoint\), T13, B4\. Touches: server\/export\/\./);
+  assert.match(text, /- W2: Export screen\. Tasks, in order: T14, T15\./);
+  assert.match(workstreamsPrompt(file.workstreams, new Map(), 'w.md', { runWorkstreams: 'Go: {streams}' }), /^Go: - W1/);
+  assert.match(DEFAULT_PROMPTS.findWorkstreams, /tasks\/workstream\.md/);
+});
+
 test('quick capture writes tasks, bugs and questions in the standard formats', async () => {
   const { nextId, insertTask, insertLegacyTask, insertBug, insertQuestion } = await import('../dist/capture.js');
   const date = new Date().toISOString().slice(0, 10);

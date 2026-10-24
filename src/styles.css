@@ -2717,3 +2717,114 @@ textarea {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- workstreams ---------- */
+
+.workstreams .count {
+  margin-left: 6px;
+  color: var(--faint);
+  font-weight: 400;
+}
+.workstreams.offer p {
+  margin: 4px 0 0;
+}
+.stream-list {
+  margin: 6px 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.stream {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: var(--step--1);
+}
+.stream-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.stream-open:hover .stream-name {
+  text-decoration: underline;
+}
+.stream-id {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+.stream-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stream.done .stream-name {
+  color: var(--muted);
+}
+.stream-progress {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.stream-state {
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+.stream-state.ready {
+  color: var(--action);
+}
+.stream-state.running {
+  background: color-mix(in srgb, var(--doing) 16%, transparent);
+  color: var(--doing);
+}
+.stream-state.done {
+  color: var(--done);
+}
+.stream-card {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-m);
+}
+.stream-card.done,
+.stream-card.running {
+  opacity: 0.7;
+}
+.stream-card-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  cursor: pointer;
+}
+.stream-card-head .stream-name {
+  flex: 1;
+  font-weight: 600;
+  white-space: normal;
+}
+.stream-tasks {
+  margin: 8px 0 0;
+  padding-left: 1.6rem;
+  font-size: var(--step--1);
+}
+.stream-tasks li.done .link-button {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.stream-touches {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: var(--step--1);
+}
+.button.small {
+  padding: 3px 10px;
+}

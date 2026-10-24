@@ -10,6 +10,7 @@ import { Proj, projects, send } from './state';
 import { renderSubagentView } from './subagents';
 import { renderChangesView } from './changes';
 import { renderUsageView } from './usage';
+import { renderWorkstreamsView } from './workstreams';
 
 // ---------- progress panel (spec and summary) ----------
 
@@ -20,7 +21,7 @@ export interface PlainDoc {
   title: string;
 }
 export let docsView:
-  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string; changes?: string; usage?: boolean }
+  | { project: string; key: string; requestId: string; tab: string; docs: DocContent[]; doc?: PlainDoc; question?: string; worktree?: string; diff?: string; subagent?: string; changes?: string; usage?: boolean; workstreams?: boolean }
   | undefined;
 export const setDocsView = (view: typeof docsView) => (docsView = view);
 
@@ -93,6 +94,7 @@ export function renderDocs(): void {
   if (docsView.subagent) return renderSubagentView(p);
   if (docsView.changes) return renderChangesView(p);
   if (docsView.usage) return renderUsageView(p);
+  if (docsView.workstreams) return renderWorkstreamsView(p);
   resetQuestionView();
   const plain = docsView.doc;
   const item = p && !plain ? allItems(p).get(docsView.key) : undefined;

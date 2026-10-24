@@ -35,6 +35,8 @@ export interface ActionItem {
 // start: now, in the project's own conversation. startSubagent: in a background subagent working
 // in its own git worktree, in parallel with the conversation.
 export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
+// What a message sent on your behalf did: a board action, or starting or finding workstreams.
+export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams';
 
 // The priority queue has two lanes: "main" items start one at a time in the conversation as each
 // turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
@@ -70,6 +72,8 @@ export type UiCommand =
   | { type: 'discardWorktree'; project: string; path: string }
   | { type: 'send'; project: string; text: string; attachments?: Attachment[] }
   | { type: 'resetUsage'; project: string }
+  | { type: 'runWorkstreams'; project: string; ids: string[] } // each in its own background subagent and worktree, at once
+  | { type: 'findWorkstreams'; project: string } // ask the agent to write tasks/workstream.md
   | { type: 'interrupt'; project: string }
   | { type: 'stopProcess'; project: string; id: string }
   | { type: 'permissionReply'; project: string; id: string; decision: 'allow' | 'always' | 'deny'; message?: string }
@@ -172,8 +176,19 @@ export interface TaskItem {
 //   tasks/bugs.md            -> 'bugs'   ("### B<n>: title" entries with "- Status:" lines)
 //   TASK.md with no phase table -> 'legacy' (older format: "## Section" groups of
 //                               "- [ ] TASK-001: title" entries with detail fields under each)
+//   tasks/workstream.md      -> 'workstreams' ("## W<n>: name" streams of tasks that can run at once)
 // Anything else matched by the task globs is 'other' and just shows its checkboxes.
-export type TaskFileKind = 'index' | 'phase' | 'bugs' | 'legacy' | 'other';
+export type TaskFileKind = 'index' | 'phase' | 'bugs' | 'legacy' | 'workstreams' | 'other';
+
+/** A stream of tasks one agent works through in order, alongside the other streams. */
+export interface Workstream {
+  id: string; // W1
+  name: string;
+  tasks: string[]; // T and B ids, in the order to do them
+  touches?: string; // the parts of the code it owns
+  waitsOn: string[]; // W ids that must be merged first
+  line: number;
+}
 
 export interface PhaseRow {
   number: string;
@@ -198,6 +213,7 @@ export interface TaskFile {
   phaseNumber?: string;
   items: TaskItem[];
   phases?: PhaseRow[];
+  workstreams?: Workstream[];
   bugs?: BugEntry[];
   mtime: number;
 }
@@ -313,7 +329,7 @@ export type ProjectEvent =
   | { type: 'planLimit'; limit: PlanLimit }
   | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers
   | { type: 'busy'; busy: boolean; status?: string | null }
-  | { type: 'user'; text: string; action?: { kind: ItemAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point
+  | { type: 'user'; text: string; action?: { kind: SentAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point
   | { type: 'assistantDelta'; msgId: string; index: number; text: string }
   | { type: 'assistantText'; msgId: string; text: string; parent: string | null; agent?: string } // agent: the subagent (its task id) that said it
   | { type: 'thinking'; msgId: string; text: string }

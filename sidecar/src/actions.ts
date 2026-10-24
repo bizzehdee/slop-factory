@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ActionItem, ItemAction, QueueLane } from './protocol.js';
+import type { ActionItem, ItemAction, QueueLane, Workstream } from './protocol.js';
 import { LEGACY_PROJECT_DIR, PROJECT_DIR } from './names.js';
 
 // Prompts sent to Claude when you press a board button. Override any of them in
@@ -47,7 +47,48 @@ export const DEFAULT_PROMPTS: Record<string, string> = {
   summarise:
     'Summarise the work done on {ref} ({title}) from {file}. Use {docs} if they exist, plus the ' +
     'git history and the code. Keep it short, and do not edit any files.',
+  runWorkstreams:
+    'Run these workstreams from {file} at the same time. Start them all now, each in its own ' +
+    'background subagent with worktree isolation (the Agent tool with isolation: "worktree"), so ' +
+    'each works on its own copy of the repository in parallel with the others. Describe each ' +
+    'subagent as "Workstream <id>: <name>".\n\n{streams}\n\n' +
+    'Tell each subagent to work through its tasks in the order listed, following AGENTS.md and the ' +
+    'task-tracking standard: a spec before changing code, tests, a summary when each task ends, and ' +
+    'the task ticked in its phase document, committing each task on its branch. It stays within the ' +
+    'code its workstream touches and stops to report rather than change what another workstream ' +
+    'owns. Have each leave its worktree in place, so I can review and merge it from Slop Factory. ' +
+    'When they finish, tell me each branch and what changed.',
+  findWorkstreams:
+    'Find the work in this project that separate agents could do at the same time, and write it ' +
+    'down as workstreams in tasks/workstream.md.\n\n' +
+    'Look through task.md, the phase documents in tasks/ and tasks/bugs.md for open tasks and bugs. ' +
+    'Read their specs and the code as far as you need to tell what each will change. Group them ' +
+    'into workstreams: each is a sequence of tasks that build on each other or change the same ' +
+    'code, and shares no files with the other streams, so their branches merge cleanly. Respect ' +
+    'every dependency and the phase order. A stream that can only start once another is merged ' +
+    'says so in Waits on. Leave out work that can\'t run alongside anything else.\n\n' +
+    'Use exactly this format, numbering streams W1 upwards:\n\n' +
+    '```markdown\n# Workstreams\n\nWork that can run at the same time, each stream in its own git ' +
+    'worktree.\n\n## W1: <what the stream delivers>\n- Tasks: T12, T13, B4\n- Touches: ' +
+    '<directories or modules it changes>\n- Waits on: none\n\n## W2: <name>\n- Tasks: T14, T15\n' +
+    '- Touches: <...>\n- Waits on: W1\n\n## Not in a stream\n\n- T16: <why it has to run on its ' +
+    'own>\n\n## Revision history\n\n| Date | Change |\n|---|---|\n| <YYYY-MM-DD> | First ' +
+    'version. |\n```\n\n' +
+    'List each stream\'s tasks in the order to do them. Then show me the streams, and don\'t start ' +
+    'any of them.',
 };
+
+/** The message that starts workstreams: each stream with its tasks (titled) in order. */
+export function workstreamsPrompt(streams: Workstream[], titles: Map<string, string>, file: string, prompts: DeskPrompts): string {
+  const list = streams
+    .map((s) => {
+      const tasks = s.tasks.map((t) => (titles.get(t) ? `${t} (${titles.get(t)})` : t)).join(', ');
+      return `- ${s.id}: ${s.name}. Tasks, in order: ${tasks || 'none listed'}.${s.touches ? ` Touches: ${s.touches}.` : ''}`;
+    })
+    .join('\n');
+  const template = prompts.runWorkstreams ?? DEFAULT_PROMPTS.runWorkstreams;
+  return template.replace(/\{(\w+)\}/g, (all, k: string) => ({ streams: list, file } as Record<string, string>)[k] ?? all);
+}
 
 export interface DeskPrompts {
   [k: string]: string;

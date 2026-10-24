@@ -16,6 +16,7 @@ import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents
 import { notify } from './notify';
 import { endTurn, noteToolUse, onRewound, startTurn } from './changes';
 import { renderUsageView, setPlanLimit } from './usage';
+import { workstreamFile } from './workstreams';
 
 // ---------- events ----------
 
@@ -258,6 +259,11 @@ export function onEvent(e: SidecarEvent): void {
       renderPriorities(p);
       return renderComposer();
     case 'processes':
+      // A workstream's subagent starting or ending changes its state on the board.
+      if (workstreamFile(p)) {
+        renderTasks();
+        if (docsView?.workstreams) renderDocs();
+      }
       return renderProcesses();
     case 'askQuestions':
       // Claude waits on the answer, so the question opens straight away unless you're mid-way through something else.

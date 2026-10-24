@@ -5,7 +5,7 @@ import { messagesToEvents } from './history.js';
 import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
 import { configDir } from './names.js';
-import type { AskedQuestion, Attachment, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 
@@ -120,7 +120,7 @@ export class FakeSession {
     return this.permissionMode;
   }
 
-  send(text: string, action?: { kind: ItemAction; key: string }, attachments: Attachment[] = []): void {
+  send(text: string, action?: { kind: SentAction; key: string }, attachments: Attachment[] = []): void {
     this.pendingTurns++;
     const uuid = randomUUID();
     this.turnIds.push(uuid);
@@ -216,6 +216,27 @@ export class FakeSession {
     this.record('assistant', text);
   }
 
+  /** A background subagent in a worktree, as the Agent tool runs one. */
+  private async subagent(description: string, slow: boolean): Promise<void> {
+    const taskId = `task_${randomUUID().slice(0, 8)}`;
+    const toolId = `tool_${taskId}`;
+    this.emit({ type: 'toolUse', id: toolId, name: 'Agent', input: { description, isolation: 'worktree' }, parent: null });
+    this.processes.started({ task_id: taskId, task_type: 'local_agent', description, tool_use_id: toolId });
+    // What the subagent says and does, tagged with it, as forwardSubagentText delivers it.
+    const said: ProjectEvent[] = [
+      { type: 'assistantText', msgId: `sub_${taskId}_1`, text: 'Reading the task and its spec.', parent: toolId, agent: taskId },
+      { type: 'toolUse', id: `sub_${taskId}_t`, name: 'Bash', input: { command: 'npm test' }, parent: toolId, agent: taskId },
+      { type: 'toolResult', toolUseId: `sub_${taskId}_t`, isError: false, preview: '12 passing', agent: taskId },
+    ];
+    this.subagents.set(taskId, said);
+    for (const e of said) this.emit(e);
+    await this.sleep(slow ? 3000 : 400);
+    const last: ProjectEvent = { type: 'assistantText', msgId: `sub_${taskId}_2`, text: 'All done; the work is committed on its branch.', parent: toolId, agent: taskId };
+    said.push(last);
+    this.emit(last);
+    this.processes.ended({ task_id: taskId, status: 'completed', summary: 'Finished in its worktree.' });
+  }
+
   private async turn(text: string, uuid: string, attached: string[] = []): Promise<void> {
     let stopped = false;
     const stop = new Promise<void>((resolve) => (this.stopTurn = () => ((stopped = true), resolve())));
@@ -235,24 +256,21 @@ export class FakeSession {
       if (lower.includes('questions')) {
         return this.reply('Before I start:\n\n1. Which database should we use?\n2. Do you need offline support?');
       }
+      if (lower.includes('find the work') && lower.includes('workstream')) {
+        writeFileSync(
+          path.join(this.cwd, 'tasks', 'workstream.md'),
+          '# Workstreams\n\n## W1: Email and scheduling\n- Tasks: T4, T3\n- Touches: server/email/\n- Waits on: none\n\n' +
+            '## W2: Reports\n- Tasks: T5, B1\n- Touches: web/reports/\n- Waits on: none\n\n## Revision history\n\n| Date | Change |\n|---|---|\n| 2026-10-24 | First version. |\n',
+        );
+        return this.reply('I found 2 workstreams and wrote them to tasks/workstream.md.');
+      }
+      if (lower.startsWith('run these workstreams')) {
+        const streams = [...text.matchAll(/^- (W\d+): ([^.]+)\./gm)].map((m) => `${m[1]}: ${m[2]}`);
+        await Promise.all(streams.map((s) => this.subagent(`Workstream ${s}`, lower.includes('slow'))));
+        return this.reply(`All ${streams.length} workstreams have finished.`);
+      }
       if (lower.includes('subagent')) {
-        const taskId = `task_${randomUUID().slice(0, 8)}`;
-        const toolId = `tool_${taskId}`;
-        this.emit({ type: 'toolUse', id: toolId, name: 'Agent', input: { description: 'Work in a worktree', isolation: 'worktree' }, parent: null });
-        this.processes.started({ task_id: taskId, task_type: 'local_agent', description: 'Work in a worktree', tool_use_id: toolId });
-        // What the subagent says and does, tagged with it, as forwardSubagentText delivers it.
-        const said: ProjectEvent[] = [
-          { type: 'assistantText', msgId: `sub_${taskId}_1`, text: 'Reading the task and its spec.', parent: toolId, agent: taskId },
-          { type: 'toolUse', id: `sub_${taskId}_t`, name: 'Bash', input: { command: 'npm test' }, parent: toolId, agent: taskId },
-          { type: 'toolResult', toolUseId: `sub_${taskId}_t`, isError: false, preview: '12 passing', agent: taskId },
-        ];
-        this.subagents.set(taskId, said);
-        for (const e of said) this.emit(e);
-        await this.sleep(lower.includes('slow') ? 3000 : 400);
-        const last: ProjectEvent = { type: 'assistantText', msgId: `sub_${taskId}_2`, text: 'All done; the work is committed on its branch.', parent: toolId, agent: taskId };
-        said.push(last);
-        this.emit(last);
-        this.processes.ended({ task_id: taskId, status: 'completed', summary: 'Finished in its worktree.' });
+        await this.subagent('Work in a worktree', lower.includes('slow'));
         return this.reply('The subagent has finished.');
       }
       if (lower.includes('edit')) {

@@ -10,7 +10,7 @@ import { FakeSession } from './fake-agent.js';
 import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
-import { Priorities, promptFor, type DeskPrompts } from './actions.js';
+import { DEFAULT_PROMPTS, Priorities, promptFor, workstreamsPrompt, type DeskPrompts } from './actions.js';
 import { ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
@@ -377,6 +377,26 @@ async function handle(cmd: UiCommand): Promise<void> {
       const blocks = await Promise.all((cmd.blocks ?? []).slice(0, 5).map((b) => p.tasks.readBlock(b.rel, b.line)));
       const docs = [...blocks.filter((b): b is { rel: string; markdown: string } => !!b), ...(await p.tasks.readDocs(cmd.paths))];
       return projectEmitter(p)({ type: 'docs', requestId: cmd.requestId, key: cmd.key, docs });
+    }
+    case 'runWorkstreams': {
+      const p = need(cmd.project);
+      const files = p.tasks.snapshot();
+      const file = files.find((f) => f.kind === 'workstreams');
+      const streams = (file?.workstreams ?? []).filter((s) => cmd.ids.includes(s.id));
+      if (!file || !streams.length) throw new Error('Those workstreams are no longer in tasks/workstream.md.');
+      // Task and bug titles, so each subagent's brief says what its tasks are.
+      const titles = new Map<string, string>();
+      for (const f of files) {
+        for (const t of f.items) if (t.id) titles.set(t.id, t.title);
+        for (const b of f.bugs ?? []) titles.set(b.id, b.title);
+      }
+      p.session.send(workstreamsPrompt(streams, titles, file.rel, p.prompts), { kind: 'runWorkstreams', key: streams.map((s) => s.id).join(', ') });
+      return;
+    }
+    case 'findWorkstreams': {
+      const p = need(cmd.project);
+      p.session.send(p.prompts.findWorkstreams ?? DEFAULT_PROMPTS.findWorkstreams, { kind: 'findWorkstreams', key: 'tasks/workstream.md' });
+      return;
     }
     case 'runAction': {
       const p = need(cmd.project);

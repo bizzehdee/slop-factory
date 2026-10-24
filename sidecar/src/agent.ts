@@ -8,7 +8,7 @@ import {
   type PermissionUpdate,
 } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, Attachment, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
+import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { sessionSettings, SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
@@ -140,7 +140,7 @@ export class AgentSession {
     return this.permissionMode;
   }
 
-  send(text: string, action?: { kind: ItemAction; key: string }, attachments: Attachment[] = []): void {
+  send(text: string, action?: { kind: SentAction; key: string }, attachments: Attachment[] = []): void {
     this.pendingTurns++;
     const uuid = randomUUID();
     this.emit({ type: 'user', text, action, uuid, ...(attachments.length ? { attachments: attachments.map((a) => a.name) } : {}) });

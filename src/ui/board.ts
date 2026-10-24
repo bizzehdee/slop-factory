@@ -6,6 +6,7 @@ import { runAction } from './menus';
 import { openQuestion, where } from './questions';
 import { isFree, laneOf, moreButton, nextQueued, startSubagentQueued, waitingOn } from './queue';
 import { Proj, active, send } from './state';
+import { workstreamSection } from './workstreams';
 
 // ---------- board ----------
 
@@ -383,6 +384,8 @@ export function renderTasks(): void {
   }
 
   for (const f of others) sections.push(h('section', { class: 'loose' }, h('h3', {}, f.title), segmentBar(f.items), taskList(p, f, f.items)));
+  const streams = workstreamSection(p);
+  if (streams) sections.push(streams);
 
   const allTasks = phases.flatMap((ph) => trackedItems(ph));
   const doneAll = allTasks.filter((i) => i.state === 'done').length;
@@ -455,6 +458,8 @@ export function renderLegacy(p: Proj, file: TaskFile, files: TaskFile[]): void {
   for (const f of files.filter((x) => x.kind === 'other' || x.kind === 'phase')) {
     parts.push(h('section', { class: 'loose' }, h('h3', {}, f.title), segmentBar(f.items), taskList(p, f, f.items)));
   }
+  const streams = workstreamSection(p);
+  if (streams) parts.push(streams);
 
   const top = file.items.filter((i) => i.depth === 0);
   $('tasks-summary').textContent = `${top.filter((i) => i.state === 'done').length}/${top.filter((i) => i.state !== 'cancelled').length}`;

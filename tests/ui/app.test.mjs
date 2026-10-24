@@ -452,3 +452,28 @@ test("each project's usage is counted and shown, with the plan's limit", async (
   await page.waitForSelector('.docs-empty:has-text("Nothing used yet")');
   assert.deepEqual(page.errors, []);
 });
+
+test('the agent can find workstreams, and they run at the same time', async () => {
+  const dir = await app.project();
+  const page = await app.open(dir);
+  // No tasks/workstream.md yet: the board offers to find some.
+  await page.click('.workstreams.offer .link-button:has-text("Find workstreams")');
+  await page.waitForSelector('.msg.user.action:has-text("Find workstreams")');
+  await page.waitForSelector('.workstreams .stream:has-text("Email and scheduling")');
+  assert.match(await page.textContent('.workstreams h3'), /2 ready/);
+  await page.click('.workstreams button:has-text("Run 2 in parallel")');
+  await page.waitForSelector('.stream-card:has-text("Reports")');
+  assert.match(await page.textContent('.stream-card:has-text("Reports")'), /T5: Report/);
+  // Untick one, then tick it again: the button says what runs.
+  await page.click('.stream-card:has-text("Reports") input[type=checkbox]');
+  assert.equal((await page.textContent('#docs-actions .button.primary')).trim(), 'Run W1');
+  await page.click('.stream-card:has-text("Reports") input[type=checkbox]');
+  await page.click('#docs-actions button:has-text("Run 2 at the same time")');
+  await page.waitForSelector('.msg.user.action:has-text("W1, W2")');
+  // Both subagents work at once, then finish.
+  await page.waitForFunction(() => document.querySelectorAll('#processes li').length >= 2);
+  assert.match(await page.textContent('#processes'), /Workstream W1: Email and scheduling/);
+  assert.match(await page.textContent('#processes'), /Workstream W2: Reports/);
+  await page.waitForSelector('.msg.assistant:has-text("All 2 workstreams have finished.")');
+  assert.deepEqual(page.errors, []);
+});

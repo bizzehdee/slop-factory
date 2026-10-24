@@ -9,6 +9,7 @@ import { newProjectDialog } from './newproject';
 import { openQuestion, openRows, questionTitle } from './questions';
 import { openSettings } from './settings';
 import { Proj, active, projects } from './state';
+import { findWorkstreams, openWorkstreams, workstreamFile } from './workstreams';
 
 // ---------- Ctrl+K: find a project, task, bug, phase, question, document or message, and go to it ----------
 
@@ -51,6 +52,7 @@ function actions(): Hit[] {
     const plan = planRel(p);
     if (plan) list.push({ kind: 'Action', label: 'Show the plan', detail: plan, haystack: 'plan show summary', run: () => showDoc(p, plan, p.name, 'Plan') });
     list.push(
+      { kind: 'Action', label: workstreamFile(p) ? 'Run workstreams…' : 'Find workstreams', haystack: 'workstreams parallel agents streams', run: () => (workstreamFile(p) ? openWorkstreams(p) : findWorkstreams(p)) },
       { kind: 'Action', label: 'Add a task…', haystack: 'add task new capture', run: () => openCapture(p, 'task') },
       { kind: 'Action', label: 'Report a bug…', haystack: 'report bug add new capture', run: () => openCapture(p, 'bug') },
       { kind: 'Action', label: 'Add an open question…', haystack: 'add open question new capture', run: () => openCapture(p, 'question') },

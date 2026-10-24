@@ -2,7 +2,7 @@ import { watch, type FSWatcher } from 'chokidar';
 import picomatch from 'picomatch';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { BugEntry, DocLink, OpenQuestion, PhaseRow, TaskFile, TaskFileKind, TaskItem, TaskState } from './protocol.js';
+import type { BugEntry, DocLink, OpenQuestion, PhaseRow, TaskFile, TaskFileKind, TaskItem, TaskState, Workstream } from './protocol.js';
 import { isQuestionDoc, parseOpenQuestions } from './questions.js';
 import { readProjectSettings } from './names.js';
 
@@ -80,6 +80,7 @@ export function fileKind(rel: string): TaskFileKind {
   if (!lower.includes('/') && lower === 'task.md') return 'index';
   if (PHASE_DOC.test(lower)) return 'phase';
   if (/(^|\/)bugs\.md$/.test(lower)) return 'bugs';
+  if (/(^|\/)workstreams?\.md$/.test(lower)) return 'workstreams';
   return 'other';
 }
 
@@ -141,6 +142,50 @@ export function parseBugs(src: string, rel = 'tasks/bugs.md'): BugEntry[] {
   return bugs;
 }
 
+const STREAM_HEAD = /^##\s+(W\d+)\s*[:.\-–]\s*(.+?)\s*#*\s*$/i;
+const FIELD = /^\s*[-*]\s+\*{0,2}(tasks|touches|waits on|depends on)\*{0,2}\s*:\s*\*{0,2}\s*(.*)$/i;
+const ITEM_ID = /\b([TB]\d+|TASK-\d+)\b/g;
+
+/** "## W<n>: name" sections with "- Tasks:", "- Touches:" and "- Waits on:" lines. */
+export function parseWorkstreams(src: string): Workstream[] {
+  const streams: Workstream[] = [];
+  let cur: (Workstream & { listed: string[]; hasTasksLine: boolean }) | undefined;
+  let inFence = false;
+  const lines = src.split(/\r?\n/);
+  const close = () => {
+    if (!cur) return;
+    const { listed, hasTasksLine, ...ws } = cur;
+    if (!hasTasksLine) ws.tasks = listed; // tasks given as a list under the heading instead
+    streams.push(ws);
+    cur = undefined;
+  };
+  lines.forEach((line, i) => {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    if (inFence) return;
+    if (/^#{1,2}\s/.test(line)) {
+      close();
+      const m = STREAM_HEAD.exec(line);
+      if (m) cur = { id: m[1].toUpperCase(), name: m[2], tasks: [], waitsOn: [], line: i, listed: [], hasTasksLine: false };
+      return;
+    }
+    if (!cur) return;
+    const f = FIELD.exec(line);
+    if (f) {
+      const key = f[1].toLowerCase();
+      const value = f[2].trim();
+      if (key === 'tasks') {
+        cur.tasks = [...value.matchAll(ITEM_ID)].map((x) => x[1]);
+        cur.hasTasksLine = true;
+      } else if (key === 'touches') cur.touches = value.replace(/`/g, '');
+      else cur.waitsOn = [...value.matchAll(/\bW\d+\b/gi)].map((x) => x[0].toUpperCase());
+      return;
+    }
+    if (/^\s*[-*]\s/.test(line)) for (const x of line.matchAll(ITEM_ID)) cur.listed.push(x[1]);
+  });
+  close();
+  return streams;
+}
+
 export function parseTaskFile(src: string, rel: string): Omit<TaskFile, 'mtime'> {
   const kind = fileKind(rel);
   const { title, items } = parseTaskMarkdown(src, rel);
@@ -154,6 +199,7 @@ export function parseTaskFile(src: string, rel: string): Omit<TaskFile, 'mtime'>
     }
   }
   if (kind === 'bugs') file.bugs = parseBugs(src, rel);
+  if (kind === 'workstreams') file.workstreams = parseWorkstreams(src);
   if (kind === 'phase') {
     const t = PHASE_TITLE.exec(title);
     file.phaseNumber = t?.[1] ?? PHASE_DOC.exec(rel)?.[2];
@@ -306,7 +352,7 @@ export class TaskWatcher {
   }
 
   snapshot(): TaskFile[] {
-    const order: Record<TaskFileKind, number> = { index: 0, legacy: 0, phase: 1, bugs: 2, other: 3 };
+    const order: Record<TaskFileKind, number> = { index: 0, legacy: 0, phase: 1, bugs: 2, workstreams: 3, other: 4 };
     return [...this.files.values()].sort(
       (a, b) =>
         order[a.kind] - order[b.kind] ||

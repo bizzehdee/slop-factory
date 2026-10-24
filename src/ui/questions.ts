@@ -1,4 +1,4 @@
-import type { AskedQuestion, ItemAction, OpenQuestion } from '../../sidecar/src/protocol';
+import type { AskedQuestion, OpenQuestion, SentAction } from '../../sidecar/src/protocol';
 import { submit } from './app';
 import { renderHeader } from './chrome';
 import { closeDocs, docsView, renderDocs, setDocsView, showDoc } from './docs';
@@ -392,9 +392,9 @@ export function updateQuestionActions(p: Proj): void {
   }
 }
 
-export const ACTION_LABEL: Record<ItemAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise' };
+export const ACTION_LABEL: Record<SentAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise', runWorkstreams: 'Run workstreams', findWorkstreams: 'Find workstreams' };
 
-export function userMessage(p: Proj, text: string, action?: { kind: ItemAction; key: string }, attachments: string[] = []): void {
+export function userMessage(p: Proj, text: string, action?: { kind: SentAction; key: string }, attachments: string[] = []): void {
   p.transcript.querySelector('.empty')?.remove();
   if (action) {
     // Board buttons send a prompt on your behalf; show what was sent, folded.
