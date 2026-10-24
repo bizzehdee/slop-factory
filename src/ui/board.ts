@@ -187,7 +187,7 @@ export function phaseTop(p: Proj, item: BoardItem | undefined, head: HTMLElement
   return h('div', { class: 'phase-top' }, head, moreButton(p, item));
 }
 
-export // Up next rows can be dragged into a new order, or moved with Alt+Up and Alt+Down.
+// Up next rows can be dragged into a new order, or moved with Alt+Up and Alt+Down.
 let dragKey: string | undefined;
 
 function moveTo(p: Proj, order: string[], key: string, before: string | undefined): void {

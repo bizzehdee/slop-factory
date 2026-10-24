@@ -477,3 +477,17 @@ test('the agent can find workstreams, and they run at the same time', async () =
   await page.waitForSelector('.msg.assistant:has-text("All 2 workstreams have finished.")');
   assert.deepEqual(page.errors, []);
 });
+
+test('a message sent while the agent is busy gets its own changes and undo', async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Do something slow');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#stop:not([hidden])');
+  await page.fill('#prompt', 'Then edit the notes');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.turn-changes:has-text("notes.txt")', { timeout: 15_000 });
+  assert.equal(await page.locator('.turn-changes').count(), 1);
+  // It survives a reload, too.
+  await page.reload();
+  await page.waitForSelector('.turn-changes:has-text("notes.txt")');
+});

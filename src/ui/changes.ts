@@ -27,10 +27,10 @@ function editsOf(p: Proj, name: string, input: unknown): FileEdit[] {
   return [{ tool: name, file, before: String(i.old_string ?? ''), after: String(i.new_string ?? '') }];
 }
 
-/** A new turn: its edits are collected until it ends. */
+/** A new turn: its edits are collected until it ends. A message sent mid-turn waits for its own turn. */
 export function startTurn(p: Proj, e: Extract<ProjectEvent, { type: 'user' }>): void {
   if (!e.uuid) return;
-  if (p.turnEdits.length && p.turnUuid) return; // a message sent mid-turn joins the turn under way
+  if (p.turnUuid) return void p.queuedTurns.push(e.uuid);
   p.turnUuid = e.uuid;
   p.turnEdits = [];
 }
@@ -44,7 +44,8 @@ export function noteToolUse(p: Proj, name: string, input: unknown, parent: strin
 export function endTurn(p: Proj): void {
   const uuid = p.turnUuid;
   const edits = p.turnEdits;
-  p.turnUuid = undefined;
+  // The next message waiting starts the next turn (even after Stop, which ends only this one).
+  p.turnUuid = p.queuedTurns.shift();
   p.turnEdits = [];
   if (!uuid || !edits.length) return;
   p.turnChanges.set(uuid, edits);

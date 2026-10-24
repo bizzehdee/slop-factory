@@ -46,6 +46,8 @@ export interface Proj {
   lastReply?: string; // the agent's latest reply, for notifications
   turnUuid?: string; // the message the current turn answers, a checkpoint to undo back to
   turnEdits: FileEdit[];
+  queuedTurns: string[]; // messages sent while a turn was under way: each starts a turn of its own
+
   turnChanges: Map<string, FileEdit[]>; // each turn's edits, by its message
   changeCards: Map<string, HTMLElement>;
   queueRan?: boolean; // the queue started something since the last notification
@@ -126,6 +128,7 @@ export function newProject(dir: string, name: string): Proj {
     attachments: [],
     commands: [],
     turnEdits: [],
+    queuedTurns: [],
     turnChanges: new Map(),
     changeCards: new Map(),
   };

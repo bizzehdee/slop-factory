@@ -59,6 +59,7 @@ export class FakeSession {
 
   onSession?: (id: string) => void;
   onUsage?: (sessionId: string, costUsd: number, models: Record<string, ModelTotals>, durationMs: number) => void;
+  private turns: Promise<void> = Promise.resolve();
   private totals = { costUsd: 0, out: 0 }; // the conversation's running totals, as a real result carries them
   private sessionId = '';
   private subagents = new Map<string, ProjectEvent[]>();
@@ -128,7 +129,8 @@ export class FakeSession {
     this.emit({ type: 'user', text, action, uuid, ...(names.length ? { attachments: names } : {}) });
     this.emit({ type: 'busy', busy: true });
     this.record('user', messageContent(text, attachments));
-    void this.turn(text, uuid, names);
+    // One turn at a time: a message sent mid-turn waits for its own, as with the real agent.
+    this.turns = this.turns.then(() => this.turn(text, uuid, names));
   }
 
   // Checkpoints, as enableFileCheckpointing keeps them: each file's content before a turn first changed it.
