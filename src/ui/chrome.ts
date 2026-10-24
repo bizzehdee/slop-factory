@@ -12,6 +12,7 @@ import { refreshWorktrees, renderWorktrees } from './worktrees';
 import { openSubagent } from './subagents';
 import { renderAttachments, renderSlashMenu } from './composer';
 import { limitText, openUsage, planLimit, usageSummary } from './usage';
+import { renderGit } from './git';
 
 // ---------- projects list ----------
 
@@ -213,6 +214,7 @@ export function renderHeader(): void {
   const fw = p.framework;
   $('framework-badge').textContent = fw?.agentsMd ? (fw.agentsSkills.length ? `AGENTS.md with ${fw.agentsSkills.length} standards` : 'AGENTS.md') : '';
   document.title = `${p.name} – Slop Factory`;
+  renderGit();
 }
 
 // Claude Code's working indicator cycles through these glyphs.

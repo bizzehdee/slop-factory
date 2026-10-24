@@ -36,6 +36,9 @@ This file is for working on Slop Factory itself. To use it, see the [README](REA
 - `sidecar/src/worktrees.ts` lists, diffs, merges and discards subagent worktrees;
   `sidecar/src/capture.ts` adds tasks, bugs and open questions to the project's files;
   `sidecar/src/usage.ts` keeps each project's usage tally.
+- `sidecar/src/git.ts` follows each project's repository through the git command-line tool (status,
+  timed fetch, fast-forward pull, push); `sidecar/src/shellpath.ts` gives a Finder-launched app the
+  PATH your login shell sets up.
 - `sidecar/src/fake-agent.ts` is the scripted agent the interface tests run against.
 - `sidecar/src/names.ts` holds the app's name, version, storage locations and the project's
   `.slop-factory.json` (documented for users in [docs/configuration.md](docs/configuration.md)).
@@ -43,7 +46,7 @@ This file is for working on Slop Factory itself. To use it, see the [README](REA
 - `src/main.ts` starts the interface in `src/ui/`, written without a framework: `app.ts` wires it
   up, `events.ts` handles the sidecar's events, and each area has its own module (board, queue,
   questions, docs, menus, settings, worktrees, subagents, changes, composer, palette, usage,
-  workstreams and so on). `src/styles.css` holds the styles.
+  workstreams, git and so on). `src/styles.css` holds the styles.
 
 ## Requirements
 

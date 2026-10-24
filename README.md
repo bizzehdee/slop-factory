@@ -23,7 +23,8 @@ Download the latest installer from the [Releases page](https://github.com/bizzeh
 | Linux (64-bit) | `.deb` (Ubuntu, Debian), `.rpm` (Fedora, openSUSE) or `.AppImage` (anything else) |
 
 You also need **a Claude subscription**, or a local model server (see [Local models](#local-models)).
-Everything else comes in the installer.
+Everything else comes in the installer, apart from [git](https://git-scm.com/downloads), which the
+[git features](#git) use if you have it.
 
 The installers aren't signed yet. On macOS, open the app the first time with right-click, then
 **Open**. On Windows, choose **More info**, then **Run anyway**.
@@ -137,6 +138,27 @@ describes the format.
 
 ![Ctrl+K searching for "invoice" across tasks, questions, documents and messages](docs/screenshots/palette.png)
 
+## Git
+
+Under the project's name, a line shows where its git repository stands: the branch, commits to
+pull (↓) and to push (↑), and how many files have uncommitted changes. It uses the git you have
+installed, with your usual credentials (SSH agent or credential helper). If git isn't installed it
+says so, and a folder that isn't a repository offers **Initialise git**.
+
+- **Fetch** happens by itself when the project opens and every 5 minutes (change it in Settings).
+  It only downloads; it never changes your files.
+- **Pull** with the ↓ button. It only fast-forwards: when your branch has commits of its own too,
+  it stops and says so, and you can ask the agent to merge. Pulling while the agent is working asks
+  first.
+- **Push** with the ↑ button, or **Publish** a branch that isn't on the remote yet. It never forces.
+- **Commit** with the "uncommitted" button: the agent reads the changes and commits them in sensible
+  pieces with clear messages, leaving out anything that shouldn't be committed. It doesn't push.
+- **Pull automatically**, in the branch menu, is off until you turn it on for a project. It then
+  pulls after each fetch, but only when it's a fast-forward, the agent is idle and nothing is
+  uncommitted.
+
+![The git line under the project's name, two commits to pull, and the branch menu](docs/screenshots/git.png)
+
 ## Questions
 
 The right side lists every open question in one place: the ones the agent asked in its latest
@@ -198,6 +220,7 @@ The gear beside Projects opens Settings:
 
 - **Appearance:** follow the system, or always light or dark.
 - **Notifications:** turn desktop notifications on or off.
+- **Git:** how often open projects fetch from their remotes, or never.
 - **Model:** the model the current project uses, and your saved local models.
 - **MCP servers:** add, change or remove the tools and data sources the agent connects to, for all
   your projects, for one project and everyone who clones it, or for one project just for you.

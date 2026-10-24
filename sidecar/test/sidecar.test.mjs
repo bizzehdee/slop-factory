@@ -808,3 +808,138 @@ test('quick capture writes tasks, bugs and questions in the standard formats', a
   assert.match(insertQuestion('# Stack\n\n## Open questions\n\nNone.\n\n## Revision history\n', 'Which database?'), /## Open questions\n\n- Which database\?\n\n## Revision history/);
   assert.match(insertQuestion('# Plan\n\nText.\n\n## Revision history\n\n| a | b |\n', 'Who decides?'), /Text\.\n\n## Open questions\n\n- Who decides\?\n\n## Revision history/);
 });
+
+test('git status lines become the numbers the header shows', async () => {
+  const { parseStatus, gitMessage, canAutoPull } = await import('../dist/git.js');
+  const status = [
+    '# branch.oid 1234',
+    '# branch.head main',
+    '# branch.upstream origin/main',
+    '# branch.ab +2 -3',
+    '1 .M N... 100644 100644 100644 a b src/a.ts',
+    '2 R. N... 100644 100644 100644 a b R100 new.ts\told.ts',
+    'u UU N... 1 2 3 4 a b c conflict.ts',
+    '? notes.txt',
+    '? more.txt',
+  ].join('\n');
+  assert.deepEqual(parseStatus(status), { branch: 'main', upstream: 'origin/main', ahead: 2, behind: 3, changed: 2, untracked: 2, conflicts: 1 });
+  assert.deepEqual(parseStatus('# branch.oid 1\n# branch.head (detached)\n'), { detached: true, ahead: 0, behind: 0, changed: 0, untracked: 0, conflicts: 0 });
+  assert.equal(gitMessage('hint: try this\nTo github.com:a/b\n ! [rejected] main -> main (fetch first)\nerror: failed to push some refs'), '! [rejected] main -> main (fetch first) failed to push some refs');
+  const base = { available: true, repo: true, branch: 'main', upstream: 'origin/main', ahead: 0, behind: 2, changed: 0, untracked: 3, conflicts: 0, remotes: ['origin'], autoPull: true };
+  assert.equal(canAutoPull(base, false), true, 'untracked files are no reason not to fast-forward');
+  assert.equal(canAutoPull(base, true), false, 'never while the agent works');
+  assert.equal(canAutoPull({ ...base, changed: 1 }, false), false);
+  assert.equal(canAutoPull({ ...base, ahead: 1 }, false), false, 'diverged: needs a merge');
+  assert.equal(canAutoPull({ ...base, autoPull: false }, false), false);
+});
+
+test('git: status, fetch, fast-forward pull, push with and without an upstream, and auto-pull', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { GitMonitor } = await import('../dist/git.js');
+  const root = await mkdtemp(path.join(tmpdir(), 'git-'));
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@t' };
+  const g = (cwd, ...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' });
+  const commit = async (dir, file, text) => {
+    await writeFile(path.join(dir, file), text);
+    g(dir, 'add', '.');
+    g(dir, 'commit', '-qm', `Change ${file}`);
+  };
+  const monitor = (dir, opts = {}) => {
+    const notices = [];
+    let busy = false;
+    const m = new GitMonitor(dir, { fetchMinutes: () => 0, autoPull: () => !!opts.autoPull, agentBusy: () => busy, emit: () => {}, notice: (level, text) => notices.push(text) });
+    return { m, notices, setBusy: (b) => (busy = b) };
+  };
+  try {
+    g(root, 'init', '-q', '--bare', '-b', 'main', 'remote.git');
+    const remote = path.join(root, 'remote.git');
+    g(root, 'clone', '-q', remote, 'other');
+    const other = path.join(root, 'other');
+    await commit(other, 'a.txt', 'one');
+    g(other, 'push', '-q', '-u', 'origin', 'main');
+    g(root, 'clone', '-q', remote, 'project');
+    const dir = path.join(root, 'project');
+
+    const { m, notices } = monitor(dir);
+    await m.refresh();
+    assert.equal(m.current.repo, true);
+    assert.equal(m.current.branch, 'main');
+    assert.equal(m.current.upstream, 'origin/main');
+    assert.deepEqual(m.current.remotes, ['origin']);
+
+    // Someone else pushes: a fetch shows it, a pull brings it in.
+    await commit(other, 'b.txt', 'two');
+    g(other, 'push', '-q');
+    await m.refresh();
+    assert.equal(m.current.behind, 0, 'not known until fetched');
+    await m.fetch(true);
+    assert.equal(m.current.behind, 1);
+    assert.ok(m.current.lastFetch);
+    await m.pull();
+    assert.equal(m.current.behind, 0);
+    assert.equal(await readFile(path.join(dir, 'b.txt'), 'utf8'), 'two');
+    assert.match(notices.at(-1), /Pulled 1 commit from origin\/main\./);
+
+    // A local commit is pushed.
+    await commit(dir, 'c.txt', 'three');
+    await writeFile(path.join(dir, 'loose.txt'), 'x');
+    await m.refresh();
+    assert.equal(m.current.ahead, 1);
+    assert.equal(m.current.untracked, 1);
+    await m.push();
+    assert.equal(m.current.ahead, 0);
+    assert.match(g(remote, 'log', '--oneline', 'main'), /Change c\.txt/);
+
+    // Diverged: pulling needs a merge, so it refuses and says why.
+    g(other, 'pull', '-q', '--ff-only');
+    await commit(other, 'd.txt', 'four');
+    g(other, 'push', '-q');
+    await commit(dir, 'e.txt', 'five');
+    await m.fetch(true);
+    assert.deepEqual([m.current.ahead, m.current.behind], [1, 1]);
+    await assert.rejects(m.pull(), /have diverged \(1 ahead, 1 behind\)/);
+
+    // A new branch has no upstream: the first push sets one.
+    g(dir, 'checkout', '-qb', 'feature');
+    await m.refresh();
+    assert.equal(m.current.upstream, undefined);
+    await m.push();
+    assert.equal(m.current.upstream, 'origin/feature');
+    assert.match(notices.at(-1), /Pushed feature to origin, and it now tracks origin\/feature\./);
+
+    // Auto-pull: a clean clone that's only behind pulls by itself, but not while the agent works.
+    g(root, 'clone', '-q', remote, 'auto');
+    const auto = monitor(path.join(root, 'auto'), { autoPull: true });
+    g(other, 'pull', '-q', '--ff-only');
+    await commit(other, 'f.txt', 'six');
+    g(other, 'push', '-q');
+    auto.setBusy(true);
+    await auto.m.fetch(true);
+    assert.equal(auto.m.current.behind, 1, 'held while the agent is busy');
+    auto.setBusy(false);
+    await auto.m.refresh();
+    assert.equal(auto.m.current.behind, 0);
+    assert.match(auto.notices.at(-1), /Pulled 1 commit from origin\/main automatically\./);
+
+    // Not a repository until initialised; no remote to push to.
+    await mkdir(path.join(root, 'plain'));
+    const plain = monitor(path.join(root, 'plain'));
+    await plain.m.refresh();
+    assert.equal(plain.m.current.repo, false);
+    await plain.m.init();
+    assert.equal(plain.m.current.repo, true);
+    await assert.rejects(plain.m.fetch(true), /no remote/);
+    [m, auto.m, plain.m].forEach((x) => x.stop());
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('PATH gets the login shell entries first, then the usual install folders, without repeats', async () => {
+  const { mergePath } = await import('../dist/shellpath.js');
+  if (process.platform === 'win32') return;
+  assert.equal(
+    mergePath('/usr/bin:/bin', '/Users/me/.cargo/bin:/opt/homebrew/bin:/usr/bin', '/Users/me'),
+    '/Users/me/.cargo/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/local/bin:/usr/sbin:/sbin:/Users/me/.local/bin',
+  );
+});

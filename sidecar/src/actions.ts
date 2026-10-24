@@ -47,6 +47,11 @@ export const DEFAULT_PROMPTS: Record<string, string> = {
   summarise:
     'Summarise the work done on {ref} ({title}) from {file}. Use {docs} if they exist, plus the ' +
     'git history and the code. Keep it short, and do not edit any files.',
+  commitChanges:
+    'Commit the uncommitted changes in this repository. Read the diff first, then group related ' +
+    'changes into logical commits with clear messages, following AGENTS.md and the conventions in ' +
+    "the project's git history. Leave out anything that shouldn't be committed, such as secrets, " +
+    "build output or files that belong in .gitignore, and tell me about them. Don't push.",
   runWorkstreams:
     'Run these workstreams from {file} at the same time. Start them all now, each in its own ' +
     'background subagent with worktree isolation (the Agent tool with isolation: "worktree"), so ' +

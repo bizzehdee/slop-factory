@@ -395,7 +395,7 @@ export function updateQuestionActions(p: Proj): void {
   }
 }
 
-export const ACTION_LABEL: Record<SentAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise', runWorkstreams: 'Run workstreams', findWorkstreams: 'Find workstreams' };
+export const ACTION_LABEL: Record<SentAction, string> = { start: 'Start now', startSubagent: 'Start in subagent', reinvestigate: 'Reinvestigate', summarise: 'Summarise', runWorkstreams: 'Run workstreams', findWorkstreams: 'Find workstreams', commit: 'Commit changes' };
 
 export function userMessage(p: Proj, text: string, action?: { kind: SentAction; key: string }, attachments: string[] = []): void {
   p.transcript.querySelector('.empty')?.remove();

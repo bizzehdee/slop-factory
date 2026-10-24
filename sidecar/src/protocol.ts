@@ -36,7 +36,7 @@ export interface ActionItem {
 // in its own git worktree, in parallel with the conversation.
 export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
 // What a message sent on your behalf did: a board action, or starting or finding workstreams.
-export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams';
+export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams' | 'commit';
 
 // The priority queue has two lanes: "main" items start one at a time in the conversation as each
 // turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
@@ -72,6 +72,14 @@ export type UiCommand =
   | { type: 'discardWorktree'; project: string; path: string }
   | { type: 'send'; project: string; text: string; attachments?: Attachment[] }
   | { type: 'resetUsage'; project: string }
+  | { type: 'gitRefresh'; project: string }
+  | { type: 'gitFetch'; project: string }
+  | { type: 'gitPull'; project: string }
+  | { type: 'gitPush'; project: string }
+  | { type: 'gitInit'; project: string }
+  | { type: 'gitCommit'; project: string } // asks the agent to commit what's uncommitted
+  | { type: 'setAutoPull'; project: string; on: boolean }
+  | { type: 'gitSettings'; fetchMinutes?: number } // read, or change, how often projects fetch
   | { type: 'runWorkstreams'; project: string; ids: string[] } // each in its own background subagent and worktree, at once
   | { type: 'findWorkstreams'; project: string } // ask the agent to write tasks/workstream.md
   | { type: 'interrupt'; project: string }
@@ -260,6 +268,25 @@ export interface SessionInfo {
   slashCommands: string[];
 }
 
+/** Where the project's git repository stands. */
+export interface GitInfo {
+  available: boolean; // the git command-line tool is installed
+  repo: boolean; // the project is inside a git repository
+  branch?: string;
+  detached?: boolean;
+  upstream?: string; // the remote branch it tracks, e.g. origin/main
+  ahead: number; // commits to push
+  behind: number; // commits to pull
+  changed: number; // tracked files with uncommitted changes
+  untracked: number;
+  conflicts: number;
+  remotes: string[];
+  autoPull: boolean; // pull by itself when safe (fast-forward, agent idle, nothing uncommitted)
+  lastFetch?: number; // ms since the epoch
+  fetchError?: string; // why the last timed fetch failed
+  running?: 'fetch' | 'pull' | 'push';
+}
+
 /** Cost, tokens, turns and time, added up. Costs are estimates, priced as the agent reports them. */
 export interface UsageTotals {
   costUsd: number;
@@ -326,6 +353,7 @@ export type ProjectEvent =
   | { type: 'closed' }
   | { type: 'session'; info: SessionInfo }
   | { type: 'usage'; usage: ProjectUsage }
+  | { type: 'git'; info: GitInfo }
   | { type: 'planLimit'; limit: PlanLimit }
   | { type: 'commands'; commands: CommandInfo[] } // slash commands and skills the "/" picker offers
   | { type: 'busy'; busy: boolean; status?: string | null }
@@ -363,6 +391,7 @@ export type GlobalEvent =
   | { type: 'loginDone'; ok: boolean; error?: string }
   | { type: 'createProgress'; requestId: string; line: string }
   | { type: 'projectCreated'; requestId: string; ok: boolean; dir?: string; error?: string }
-  | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string };
+  | { type: 'globalNotice'; level: 'info' | 'warn' | 'error'; text: string }
+  | { type: 'gitSettings'; fetchMinutes: number };
 
 export type SidecarEvent = GlobalEvent | (ProjectEvent & { project: string });

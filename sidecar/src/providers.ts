@@ -21,6 +21,8 @@ interface DeskState {
   projectMode: Record<string, PermissionModeName>;
   defaultMode?: PermissionModeName; // the last mode chosen anywhere; new projects start in it
   projectSession: Record<string, string>; // each project's conversation, picked up after a restart
+  projectAutoPull: Record<string, boolean>; // projects that pull by themselves when it's safe
+  gitFetchMinutes?: number; // how often open projects fetch; 0 never (default 5)
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -30,7 +32,7 @@ import { appVersion, configDir } from './names.js';
 export { configDir };
 
 export class ProviderStore {
-  private state: DeskState = { providers: [], projectProvider: {}, projectMode: {}, projectSession: {} };
+  private state: DeskState = { providers: [], projectProvider: {}, projectMode: {}, projectSession: {}, projectAutoPull: {} };
   private file = path.join(configDir(), 'config.json');
 
   async load(): Promise<void> {
@@ -42,6 +44,8 @@ export class ProviderStore {
         projectMode: raw.projectMode && typeof raw.projectMode === 'object' ? raw.projectMode : {},
         defaultMode: MODES.includes(raw.defaultMode) ? raw.defaultMode : undefined,
         projectSession: raw.projectSession && typeof raw.projectSession === 'object' ? raw.projectSession : {},
+        projectAutoPull: raw.projectAutoPull && typeof raw.projectAutoPull === 'object' ? raw.projectAutoPull : {},
+        gitFetchMinutes: typeof raw.gitFetchMinutes === 'number' && raw.gitFetchMinutes >= 0 ? raw.gitFetchMinutes : undefined,
       };
     } catch {
       /* first run */
@@ -77,6 +81,26 @@ export class ProviderStore {
     if (this.state.projectSession[dir] === id) return;
     if (id) this.state.projectSession[dir] = id;
     else delete this.state.projectSession[dir];
+    await this.save();
+  }
+
+  autoPull(dir: string): boolean {
+    return !!this.state.projectAutoPull[dir];
+  }
+
+  async setAutoPull(dir: string, on: boolean): Promise<void> {
+    if (on) this.state.projectAutoPull[dir] = true;
+    else delete this.state.projectAutoPull[dir];
+    await this.save();
+  }
+
+  /** How often open projects fetch from their remotes, in minutes; 0 is never. */
+  get fetchMinutes(): number {
+    return this.state.gitFetchMinutes ?? 5;
+  }
+
+  async setFetchMinutes(minutes: number): Promise<void> {
+    this.state.gitFetchMinutes = Math.max(0, Math.round(minutes));
     await this.save();
   }
 

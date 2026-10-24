@@ -154,6 +154,7 @@ export function wireSettings(): void {
   });
   $('add-local-model').addEventListener('click', () => openProviderDialog());
   $('notify-toggle').addEventListener('change', (ev) => setNotifications((ev.target as HTMLInputElement).checked));
+  $('fetch-minutes').addEventListener('change', (ev) => send({ type: 'gitSettings', fetchMinutes: Number((ev.target as HTMLSelectElement).value) }));
   $('mcp-add').addEventListener('click', () => openMcpForm());
   $('mcp-cancel').addEventListener('click', closeMcpForm);
   $('mcp-restart').addEventListener('click', () => {

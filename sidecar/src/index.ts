@@ -19,8 +19,12 @@ import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { addBug, addQuestion, addTask } from './capture.js';
 import { UsageLedger } from './usage.js';
+import { GitMonitor } from './git.js';
+import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
 import type { LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
+
+fixPath();
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
 const writeOut = process.stdout.write.bind(process.stdout);
@@ -48,7 +52,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'git', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -63,6 +67,8 @@ interface Project {
   latest: Map<string, ProjectEvent>;
   openPermissions: Set<string>;
   laneRun?: LaneRun | null;
+  git: GitMonitor;
+  onEvent?: (e: ProjectEvent) => void;
 }
 
 const projects = new Map<string, Project>();
@@ -82,7 +88,7 @@ const checkAuth = () => (FAKE_AGENT ? Promise.resolve({ loggedIn: true, method: 
 const providers = new ProviderStore();
 const usage = new UsageLedger();
 
-function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'openPermissions'>) {
+function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'openPermissions' | 'onEvent'>) {
   return (e: ProjectEvent): void => {
     if (TRANSCRIPT.has(e.type)) {
       p.transcript.push(e);
@@ -92,6 +98,7 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
     if (e.type === 'permissionRequest' || e.type === 'askQuestions') p.openPermissions.add(e.id);
     if (e.type === 'permissionResolved') p.openPermissions.delete(e.id);
     emit({ ...e, project: p.dir });
+    p.onEvent?.(e);
   };
 }
 
@@ -139,7 +146,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   const st = await fs.stat(dir).catch(() => null);
   if (!st?.isDirectory()) throw new Error(`Not a folder: ${dir}`);
 
-  const shell = { dir, transcript: [] as ProjectEvent[], latest: new Map<string, ProjectEvent>(), openPermissions: new Set<string>() };
+  const shell: Pick<Project, 'dir' | 'transcript' | 'latest' | 'openPermissions' | 'onEvent'> = { dir, transcript: [], latest: new Map(), openPermissions: new Set() };
   const out = projectEmitter(shell);
 
   const [config, prompts, framework] = await Promise.all([loadTaskConfig(dir), loadPrompts(dir), scanFramework(dir)]);
@@ -161,8 +168,20 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   for (const e of history) out(e);
   if (history.length) out({ type: 'notice', level: 'info', text: 'Picked up where you left off. Choose New conversation in the project menu to start afresh.' });
   const session = newSession(dir, mode, out, provider, history.length ? previous : undefined);
-  const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent };
+  const git = new GitMonitor(dir, {
+    fetchMinutes: () => providers.fetchMinutes,
+    autoPull: () => providers.autoPull(dir),
+    agentBusy: () => project.session.busy,
+    emit: (info) => out({ type: 'git', info }),
+    notice: (level, text) => out({ type: 'notice', level, text }),
+  });
+  const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent, git };
   projects.set(dir, project);
+  // A turn ending, task files changing or a worktree merging can all move the repository on.
+  shell.onEvent = (e) => {
+    if (e.type === 'turnEnd' || e.type === 'tasks' || e.type === 'worktrees' || (e.type === 'busy' && !e.busy)) git.poke();
+  };
+  git.start();
 
   tasks.start();
   session.processes.clear();
@@ -175,6 +194,7 @@ async function closeProject(dir: string): Promise<void> {
   const p = projects.get(dir);
   if (!p) return;
   projects.delete(dir);
+  p.git.stop();
   p.session.close();
   await p.tasks.stop();
   emit({ type: 'closed', project: dir });
@@ -234,6 +254,10 @@ function openInFileManager(dir: string): Promise<void> {
     });
   });
 }
+
+const failed = (what: string) => (err: unknown): never => {
+  throw new Error(`${what}: ${err instanceof Error ? err.message : String(err)}`);
+};
 
 function need(dir: string): Project {
   const p = projects.get(dir);
@@ -321,6 +345,29 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'openUrl':
       if (!/^https:\/\/[^\s"]+$/.test(cmd.url)) throw new Error('Only https links open from here.');
       return openInFileManager(cmd.url);
+    case 'gitSettings':
+      if (typeof cmd.fetchMinutes === 'number') await providers.setFetchMinutes(cmd.fetchMinutes);
+      return emit({ type: 'gitSettings', fetchMinutes: providers.fetchMinutes });
+    case 'gitRefresh':
+      return need(cmd.project).git.refresh();
+    case 'gitFetch':
+      return need(cmd.project).git.fetch(true).catch(failed("Couldn't fetch"));
+    case 'gitPull':
+      return need(cmd.project).git.pull().catch(failed("Couldn't pull"));
+    case 'gitPush':
+      return need(cmd.project).git.push().catch(failed("Couldn't push"));
+    case 'gitInit':
+      return need(cmd.project).git.init().catch(failed("Couldn't make this a git repository"));
+    case 'setAutoPull': {
+      const p = need(cmd.project);
+      await providers.setAutoPull(p.dir, cmd.on);
+      return p.git.refresh();
+    }
+    case 'gitCommit': {
+      const p = need(cmd.project);
+      p.session.send(p.prompts.commitChanges ?? DEFAULT_PROMPTS.commitChanges, { kind: 'commit', key: 'uncommitted changes' });
+      return;
+    }
     case 'resetUsage': {
       const p = need(cmd.project);
       p.out({ type: 'usage', usage: await usage.reset(p.dir) });

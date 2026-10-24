@@ -501,3 +501,68 @@ test("a reply's answer options aren't listed as questions; its question is", asy
   assert.doesNotMatch(text, /Stripe/);
   assert.doesNotMatch(text, /PayPal/);
 });
+
+test('git: initialise, publish, fetch and pull, push, and commit through the agent', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const env = { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@t' };
+  const g = (cwd, ...args) => execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  const dir = await app.project();
+  const page = await app.open(dir);
+  const fetchNow = async () => {
+    await page.click('#git-branch');
+    await page.click('#menu .menu-item:has-text("Fetch now")');
+  };
+
+  await page.click('#git-status .link-button:has-text("Initialise git")');
+  await page.waitForSelector('#git-branch');
+  const root = await mkdtemp(path.join(tmpdir(), 'git-ui-'));
+  const remote = path.join(root, 'remote.git');
+  g(root, 'init', '-q', '--bare', '-b', 'main', 'remote.git');
+  g(dir, 'checkout', '-qb', 'main');
+  g(dir, 'add', '.');
+  g(dir, 'commit', '-qm', 'First');
+  g(dir, 'remote', 'add', 'origin', remote);
+
+  // A branch that isn't on the remote yet is published with its upstream.
+  await fetchNow();
+  await page.click('.git-chip:has-text("Publish")');
+  await page.waitForSelector('.notice:has-text("now tracks origin/main")');
+  assert.match(await page.textContent('#git-branch'), /main/);
+
+  // Someone else pushes: fetching shows it and Pull brings it in.
+  const other = path.join(root, 'other');
+  g(root, 'clone', '-q', remote, 'other');
+  await writeFile(path.join(other, 'theirs.txt'), 'from elsewhere');
+  g(other, 'add', '.');
+  g(other, 'commit', '-qm', 'Theirs');
+  g(other, 'push', '-q');
+  await fetchNow();
+  await page.click('.git-chip.pull:has-text("↓1")');
+  await page.waitForSelector('.notice:has-text("Pulled 1 commit from origin/main.")');
+  assert.equal(await readFile(path.join(dir, 'theirs.txt'), 'utf8'), 'from elsewhere');
+
+  // A local commit is pushed.
+  await writeFile(path.join(dir, 'mine.txt'), 'mine');
+  g(dir, 'add', '.');
+  g(dir, 'commit', '-qm', 'Mine');
+  await fetchNow();
+  await page.click('.git-chip.push:has-text("↑1")');
+  await page.waitForSelector('.notice:has-text("Pushed 1 commit to origin/main.")');
+  assert.match(g(remote, 'log', '--oneline', 'main'), /Mine/);
+
+  // Uncommitted work: the agent is asked to commit it.
+  await writeFile(path.join(dir, 'scratch.txt'), 'wip');
+  await fetchNow();
+  await page.click('.git-chip.changes:has-text("1 uncommitted")');
+  await page.waitForSelector('.msg.user.action:has-text("Commit changes")');
+
+  // Pulling by itself is a per-project switch.
+  await page.click('#git-branch');
+  await page.click('#menu .menu-item:has-text("Pull automatically")');
+  await page.waitForTimeout(300);
+  await page.click('#git-branch');
+  assert.equal(await page.getAttribute('#menu .menu-item:has-text("Pull automatically")', 'aria-checked'), 'true');
+  assert.deepEqual(page.errors, []);
+});

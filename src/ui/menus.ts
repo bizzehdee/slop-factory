@@ -16,6 +16,8 @@ export interface MenuItem {
   run?: () => void;
   submenu?: MenuItem[];
   disabled?: boolean;
+  checked?: boolean; // a setting that is on or off
+  note?: boolean; // a line of information rather than an action
 }
 
 export function menuButton(it: MenuItem, inSubmenu: boolean): HTMLButtonElement {
@@ -33,9 +35,10 @@ export function menuButton(it: MenuItem, inSubmenu: boolean): HTMLButtonElement 
   const b = h(
     'button',
     {
-      class: 'menu-item',
+      class: `menu-item${it.note ? ' note' : ''}${it.checked !== undefined ? ' menu-check' : ''}`,
       type: 'button',
-      role: 'menuitem',
+      role: it.checked !== undefined ? 'menuitemcheckbox' : 'menuitem',
+      'aria-checked': it.checked === undefined ? null : String(it.checked),
       disabled: it.disabled,
       onclick: () => {
         closeMenu();

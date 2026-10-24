@@ -17,6 +17,7 @@ import { notify } from './notify';
 import { clearQueuedTurns, endTurn, noteToolUse, onRewound, startTurn } from './changes';
 import { renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
+import { renderGit, setFetchMinutes } from './git';
 
 // ---------- events ----------
 
@@ -42,6 +43,10 @@ export function onEvent(e: SidecarEvent): void {
       return onCreateEvent(e);
     case 'editors':
       setEditorList(e.list);
+      return;
+    case 'gitSettings':
+      setFetchMinutes(e.fetchMinutes);
+      $<HTMLSelectElement>('fetch-minutes').value = String(e.fetchMinutes);
       return;
     case 'mcpServers':
       return onMcpServers(e);
@@ -111,6 +116,10 @@ export function onEvent(e: SidecarEvent): void {
       break;
     case 'commands':
       p.commands = e.commands;
+      return;
+    case 'git':
+      p.git = e.info;
+      if (isActive) renderGit();
       return;
     case 'usage':
       p.usage = e.usage;

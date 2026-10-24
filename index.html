@@ -33,6 +33,7 @@
           </div>
           <p id="project-path" class="project-path"></p>
           <p id="framework-badge" class="framework-badge"></p>
+          <div id="git-status" class="git-status" aria-label="Git" hidden></div>
         </div>
 
         <section id="priorities-section" class="priorities" aria-labelledby="priorities-heading" hidden>
@@ -242,6 +243,21 @@
             <input id="notify-toggle" type="checkbox" checked />
             <span>Tell me when a project needs me, finishes, or empties its queue, while I'm looking elsewhere</span>
           </label>
+        </section>
+
+        <section class="settings-section" aria-labelledby="settings-git">
+          <h3 id="settings-git">Git</h3>
+          <label class="field-row" for="fetch-minutes">
+            <span>Fetch from remotes</span>
+            <select id="fetch-minutes">
+              <option value="0">Never by itself</option>
+              <option value="1">Every minute</option>
+              <option value="5">Every 5 minutes</option>
+              <option value="15">Every 15 minutes</option>
+              <option value="30">Every 30 minutes</option>
+            </select>
+          </label>
+          <p class="settings-note">Fetching only downloads; it never changes your files. Pulling by itself is set per project, in the branch menu under the project's name.</p>
         </section>
 
         <section class="settings-section" aria-labelledby="settings-model">

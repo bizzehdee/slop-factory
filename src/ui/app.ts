@@ -13,6 +13,7 @@ import { active, bridge, load, projects, send, setBridge } from './state';
 import { wireCapture } from './capture';
 import { slashKey, takeAttachments, wireComposer } from './composer';
 import { openPalette, wirePalette } from './palette';
+import { wireGit } from './git';
 
 export function addProjectMenu(): MenuItem[] {
   return [
@@ -62,6 +63,7 @@ export async function init(): Promise<void> {
   wireCapture();
   wireComposer();
   wirePalette();
+  wireGit();
   $('open-palette').addEventListener('click', openPalette);
   $('composer').addEventListener('submit', (ev) => {
     ev.preventDefault();

@@ -1559,6 +1559,33 @@ textarea {
   color: var(--faint);
   cursor: default;
 }
+.menu-item.menu-check {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+.menu-item.menu-check::after {
+  content: '';
+  width: 1em;
+  color: var(--action);
+}
+.menu-item.menu-check[aria-checked='true']::after {
+  content: '✓';
+}
+.menu-item.note {
+  max-width: 22rem;
+  padding-block: 3px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  white-space: normal;
+}
+.menu-item.note:first-of-type,
+.menu-item:not(.note) + .menu-item.note {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+}
 .menu-item.has-submenu {
   display: flex;
   justify-content: space-between;
@@ -2831,4 +2858,76 @@ textarea {
 }
 .button.small {
   padding: 3px 10px;
+}
+
+/* ---------- git ---------- */
+
+.git-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 0 0;
+  font-size: var(--step--1);
+}
+.git-status[hidden] {
+  display: none;
+}
+.git-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 8px 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.git-branch:hover,
+.git-branch[aria-expanded='true'] {
+  border-color: var(--faint);
+}
+.git-branch svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: var(--muted);
+}
+.git-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--text);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.git-chip:hover:not(:disabled) {
+  border-color: var(--faint);
+}
+.git-chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.git-chip.pull,
+.git-chip.push {
+  border-color: color-mix(in srgb, var(--action) 45%, var(--line));
+  color: var(--action);
+  font-weight: 600;
+}
+.git-running {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+.git-warn {
+  font-weight: 700;
+  cursor: help;
 }

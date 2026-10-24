@@ -200,6 +200,7 @@ their built-in text, so you can change one without copying the rest.
 | **Summarise work done** | a finished task, bug or phase | `summarise` | |
 | **Run workstreams** | the streams you pick | `runWorkstreams` | |
 | **Find workstreams** | the board | `findWorkstreams` | |
+| **Commit** | the uncommitted changes, from the git line under the project's name | `commitChanges` | |
 
 Items in **Up next** use the same prompts when their turn comes: **Start now** for the main
 queue, **Start in subagent** for items queued to run in a subagent.
@@ -232,6 +233,7 @@ Which prompts can use which placeholders:
 | `whereNow`, `whereSubagent` | the start prompt's, apart from `{where}`: their text takes the place of `{where}` before the rest are filled in |
 | `runWorkstreams` | `{streams}` (one line per stream: its id, name, tasks in order with their titles, and what it touches), `{file}` |
 | `findWorkstreams` | none |
+| `commitChanges` | none |
 
 A start prompt without `{where}` still says where the work runs: the `whereNow` or
 `whereSubagent` text is added at the end. Put `{where}` in yourself to choose where it goes.
@@ -329,6 +331,15 @@ Run it in a background subagent. Read {docs}, check the code still does what tha
 
 ```text
 Summarise the work done on {ref} ({title}) from {file}. Use {docs} if they exist, plus the git history and the code. Keep it short, and do not edit any files.
+```
+
+</details>
+
+<details>
+<summary><code>commitChanges</code></summary>
+
+```text
+Commit the uncommitted changes in this repository. Read the diff first, then group related changes into logical commits with clear messages, following AGENTS.md and the conventions in the project's git history. Leave out anything that shouldn't be committed, such as secrets, build output or files that belong in .gitignore, and tell me about them. Don't push.
 ```
 
 </details>
