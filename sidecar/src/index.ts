@@ -10,7 +10,7 @@ import { FakeSession } from './fake-agent.js';
 import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
-import { DEFAULT_PROMPTS, Priorities, promptFor, workstreamsPrompt, type DeskPrompts } from './actions.js';
+import { DEFAULT_PROMPTS, Priorities, planPrompt, promptFor, workstreamsPrompt, type DeskPrompts } from './actions.js';
 import { ProviderStore, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
@@ -134,6 +134,9 @@ function replay(p: Project): void {
   send({ type: 'replayDone' });
 }
 
+// New projects' first messages, sent when each opens: "start a plan for ..." from its description.
+const firstMessages = new Map<string, { description: string; name: string }>();
+
 // Projects part-way through opening. The window hears about a project before it's ready, and its
 // commands for it wait here rather than fail.
 const opening = new Map<string, Promise<void>>();
@@ -199,6 +202,11 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
   tasks.start();
   session.processes.clear();
   session.start();
+  const first = firstMessages.get(dir);
+  if (first) {
+    firstMessages.delete(dir);
+    session.send(planPrompt(first.description), { kind: 'plan', key: first.name });
+  }
   // The window treats a project as replaying until this arrives, as it does for a reopened one.
   out({ type: 'replayDone' });
 }
@@ -512,6 +520,8 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'createProject':
       try {
         const dir = await createProject(cmd.request, (line) => emit({ type: 'createProgress', requestId: cmd.requestId, line }));
+        // Its first message goes once it opens and its agent has started.
+        if (cmd.request.description?.trim()) firstMessages.set(path.resolve(dir), { description: cmd.request.description, name: cmd.request.name });
         emit({ type: 'projectCreated', requestId: cmd.requestId, ok: true, dir });
       } catch (err) {
         emit({ type: 'projectCreated', requestId: cmd.requestId, ok: false, error: err instanceof Error ? err.message : String(err) });

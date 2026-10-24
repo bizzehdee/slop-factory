@@ -1938,9 +1938,23 @@ textarea {
   font-family: var(--mono);
   font-size: 0.8125rem;
 }
-.field input:focus {
+.field textarea {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  font: inherit;
+  line-height: 1.45;
+  resize: vertical;
+}
+.field input:focus,
+.field textarea:focus {
   outline: none;
   border-color: var(--clay);
+}
+.field > span.field-hint {
+  font-weight: 400;
 }
 .field-row {
   display: flex;

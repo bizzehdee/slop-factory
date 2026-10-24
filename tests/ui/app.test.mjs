@@ -189,6 +189,24 @@ test('a new project gets its folder and git repository, then opens', async () =>
   await page.click('#np-create');
   await page.waitForSelector('#project-name:has-text("fresh-start")');
   await stat(path.join(app.work, 'fresh-start', '.git'));
+  // No description: the agent isn't sent anything.
+  await page.waitForTimeout(500);
+  assert.equal(await page.locator('.transcript:not([hidden]) .msg.user').count(), 0);
+
+  // With one, its first message asks the agent to start a plan for it.
+  await page.click('#add-project');
+  await page.click('#menu .menu-item:has-text("New project")');
+  await page.fill('#new-project-form input[name=name]', 'Invoicer');
+  await page.fill('#new-project-form textarea[name=description]', '  An invoicing app for freelancers  ');
+  await page.fill('#np-parent', app.work);
+  await page.check('#new-project-form input[value=none]');
+  await page.click('#np-create');
+  await page.waitForSelector('#project-name:has-text("invoicer")');
+  await page.waitForSelector('.transcript:not([hidden]) .msg.user.action:has-text("Start a plan")');
+  assert.equal(
+    (await page.textContent('.transcript:not([hidden]) .msg.user.action .action-prompt')).trim(),
+    'Start a plan, and await more instructions for: An invoicing app for freelancers',
+  );
 });
 
 test("a subagent's worktree can be reviewed, merged or discarded", async () => {

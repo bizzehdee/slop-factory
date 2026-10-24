@@ -74,6 +74,7 @@ export function wireNewProjectDialog(): void {
         git,
         remote: git ? value('remote') || undefined : undefined,
         framework: (form.querySelector('input[name=framework]:checked') as HTMLInputElement).value as 'full' | 'basic' | 'none',
+        description: (form.elements.namedItem('description') as HTMLTextAreaElement).value.trim() || undefined,
       },
     });
   });

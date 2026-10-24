@@ -193,8 +193,10 @@ Each project remembers its mode.
 
 ## New projects
 
-**+**, then **New project**, asks for a name, where to put it, whether to start a git repository
-(and its remote), and what instructions the agent should follow:
+**+**, then **New project**, asks for a name, what the project is for, where to put it, whether to
+start a git repository (and its remote), and what instructions the agent should follow. With a
+description, the agent's first message asks it to start a plan for the project and then wait for
+you; leave it empty and nothing is sent.
 
 - **Full agent-framework:** every standard from agent-framework, installed with its own installer.
 - **Task tracking only:** an `AGENTS.md` with just agent-framework's task and bug tracking rules.

@@ -83,6 +83,14 @@ export const DEFAULT_PROMPTS: Record<string, string> = {
     'any of them.',
 };
 
+/**
+ * A new project's first message: start a plan for what it's for. Fixed, since a new project's
+ * folder starts empty and so has no .slop-factory.json to change it.
+ */
+export function planPrompt(description: string): string {
+  return `Start a plan, and await more instructions for: ${description.trim()}`;
+}
+
 /** The message that starts workstreams: each stream with its tasks (titled) in order. */
 export function workstreamsPrompt(streams: Workstream[], titles: Map<string, string>, file: string, prompts: DeskPrompts): string {
   const list = streams

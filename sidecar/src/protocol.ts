@@ -37,7 +37,7 @@ export interface ActionItem {
 // in its own git worktree, in parallel with the conversation.
 export type ItemAction = 'start' | 'startSubagent' | 'reinvestigate' | 'summarise';
 // What a message sent on your behalf did: a board action, or starting or finding workstreams.
-export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams' | 'commit';
+export type SentAction = ItemAction | 'runWorkstreams' | 'findWorkstreams' | 'commit' | 'plan';
 
 // The priority queue has two lanes: "main" items start one at a time in the conversation as each
 // turn ends; "subagent" items start one at a time in a background subagent as the previous one ends.
@@ -155,6 +155,7 @@ export interface NewProjectRequest {
   git: boolean;
   remote?: string; // added as origin
   framework: 'full' | 'basic' | 'none'; // basic: an AGENTS.md with only task and bug tracking
+  description?: string; // what it's for: the first message asks the agent to start a plan for it
 }
 
 // ---------- sidecar -> UI ----------
