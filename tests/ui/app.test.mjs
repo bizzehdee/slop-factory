@@ -491,3 +491,13 @@ test('a message sent while the agent is busy gets its own changes and undo', asy
   await page.reload();
   await page.waitForSelector('.turn-changes:has-text("notes.txt")');
 });
+
+test("a reply's answer options aren't listed as questions; its question is", async () => {
+  const page = await app.open(await app.project());
+  await page.fill('#prompt', 'Choose a provider for me');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#questions :text("Which of these should take the card payments?")');
+  const text = await page.textContent('#questions');
+  assert.doesNotMatch(text, /Stripe/);
+  assert.doesNotMatch(text, /PayPal/);
+});

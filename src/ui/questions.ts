@@ -34,11 +34,14 @@ export function extractQuestions(text: string): string[] {
     if (fence || !line.trim()) continue;
     const item = LIST_ITEM.exec(line);
     if (!item) {
-      underQuestions = /\bquestions?\b[^.?!]*:?\**\s*$/i.test(line) && !line.includes('?');
+      // A short lead-in such as "Questions:" or "**Open questions**", not any sentence that mentions them.
+      underQuestions = !line.includes('?') && /\bquestions?\b/i.test(line) && line.trim().length <= 80 && (/:\**\s*$/.test(line) || /^\s*(#{1,6}\s|\*\*)/.test(line));
       if (line.includes('?')) out.push(line.replace(/^\s*(#{1,6}\s+|>\s*)/, '').trim());
       continue;
     }
     if (!item[2].includes('?') && !underQuestions) continue;
+    // A recommended choice is an answer on offer, not a question.
+    if (!item[2].includes('?') && /\(recommended\)/i.test(item[2])) continue;
     const indent = item[1].length;
     const parts = [item[2].trim()];
     for (; i + 1 < lines.length; i++) {

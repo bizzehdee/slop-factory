@@ -255,6 +255,13 @@ export class FakeSession {
         const answers = await this.ask<Record<string, string> | null>(id, { type: 'askQuestions', id, questions: ASKED });
         return this.reply(answers ? `Thanks. ${Object.values(answers).join('; ')}.` : "I'll wait for your answer in the chat.");
       }
+      if (lower.includes('choose a provider')) {
+        return this.reply(
+          'You dismissed the questions, so reply with your pick and I will record it in plan.md and take it off the open questions list:\n\n' +
+            '1. **Stripe (Recommended):** official Node SDK and hosted card entry.\n2. **PayPal:** clients can pay with a PayPal account.\n\n' +
+            'Which of these should take the card payments?',
+        );
+      }
       if (lower.includes('questions')) {
         return this.reply('Before I start:\n\n1. Which database should we use?\n2. Do you need offline support?');
       }
