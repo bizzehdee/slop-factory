@@ -823,3 +823,38 @@ test('tasks start compacted or in a new conversation, by default or for one proj
   await page.waitForTimeout(300);
   assert.deepEqual(page.errors, []);
 });
+
+test("an out-of-date agent-framework is offered as an upgrade, which can wait until it changes again", async () => {
+  const { execFileSync } = await import('node:child_process');
+  const { mkdir } = await import('node:fs/promises');
+  // The app's copy of the framework, made recently so it isn't fetched again.
+  const fw = path.join(app.work, 'config', 'agent-framework');
+  await mkdir(path.join(fw, 'standards'), { recursive: true });
+  await writeFile(path.join(fw, 'standards', 'task-tracking.md'), '# Task tracking\n\n## Bugs\n\nOne heading per bug in tasks/bugs.md.\n');
+  execFileSync('git', ['init', '-q', fw]);
+  await writeFile(path.join(fw, '.git', 'slop-factory-updated'), '');
+  const agentsMd =
+    '# Agent instructions\n\nThis project uses the task and bug tracking rules from [agent-framework](https://github.com/bizzehdee/agent-framework) and nothing else from it.\n\n' +
+    '## Task tracking\n\n<!-- agent-framework task-tracking: aaaa1111 -->\n\n### Bugs\n\nKeep tasks/bugs.md.\n\n## Our own rules\n\nUse tabs.\n';
+  const dir = await app.project({ 'AGENTS.md': agentsMd });
+  const page = await app.open(dir);
+  const line = page.locator('#framework-update');
+  await line.locator('text=/agent-framework is out of date \\(aaaa1111 → [0-9a-f]{8}\\)/').waitFor();
+
+  // Not now: hidden, until it's asked about again from the project menu.
+  await line.locator('button:has-text("Not now")').click();
+  await page.waitForSelector('#framework-update', { state: 'hidden' });
+  await page.click('#project-menu');
+  await page.click('#menu .menu-item:has-text("Check agent-framework")');
+  await page.waitForSelector('.notice:has-text("agent-framework is out of date here")');
+  await line.waitFor();
+
+  page.once('dialog', (d) => d.accept());
+  await line.locator('button:has-text("Upgrade")').click();
+  await page.waitForSelector('.notice:has-text("Upgraded agent-framework from aaaa1111 to")');
+  await page.waitForSelector('#framework-update', { state: 'hidden' });
+  const after = await readFile(path.join(dir, 'AGENTS.md'), 'utf8');
+  assert.match(after, /### Bugs\n\nOne heading per bug in tasks\/bugs\.md\.\n\n## Our own rules\n\nUse tabs\.\n$/);
+  assert.doesNotMatch(after, /aaaa1111/);
+  assert.deepEqual(page.errors, []);
+});

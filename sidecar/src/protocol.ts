@@ -86,6 +86,9 @@ export type UiCommand =
   | { type: 'gitInit'; project: string }
   | { type: 'gitCommit'; project: string } // asks the agent to commit what's uncommitted
   | { type: 'setAutoPull'; project: string; on: boolean }
+  | { type: 'frameworkCheck'; project: string } // check now, against a freshly updated copy
+  | { type: 'frameworkUpgrade'; project: string }
+  | { type: 'frameworkDismiss'; project: string } // "not now", until agent-framework changes again
   | { type: 'gitSettings'; fetchMinutes?: number } // read, or change, how often projects fetch
   | { type: 'runWorkstreams'; project: string; ids: string[] } // each in its own background subagent and worktree, at once
   | { type: 'findWorkstreams'; project: string } // ask the agent to write tasks/workstream.md
@@ -279,6 +282,20 @@ export interface SessionInfo {
 /** Where a task started from the board runs: as the conversation is, compacted first, or a new one. */
 export type TaskStart = 'current' | 'compact' | 'new';
 
+/** Whether the project's copy of agent-framework matches the current one. */
+export interface FrameworkStatus {
+  kind: 'full' | 'basic' | 'none'; // installed with its installer, AGENTS.md with task tracking only, or not at all
+  installed?: string; // the version stamped in the project; 'unstamped' for installs from before stamps
+  current?: string; // the version it would get today
+  outdated: boolean;
+  differ?: number; // files that aren't what the current version writes
+  missing?: number;
+  dismissed?: boolean; // "not now" was chosen for this current version
+  checking?: boolean;
+  upgrading?: boolean;
+  error?: string; // the check couldn't run (offline with no copy yet, the installer failed)
+}
+
 /** A file with uncommitted changes. */
 export interface ChangedFile {
   path: string; // a folder of new files ends with /
@@ -385,6 +402,7 @@ export type ProjectEvent =
   | { type: 'session'; info: SessionInfo }
   | { type: 'usage'; usage: ProjectUsage }
   | { type: 'git'; info: GitInfo }
+  | { type: 'framework'; status: FrameworkStatus }
   | { type: 'taskStart'; mode: TaskStart | null } // this project's own choice; null: the default
   | { type: 'gitChanges'; requestId: string; files: ChangedFile[]; diff: string; more: number; error?: string }
   | { type: 'planLimit'; limit: PlanLimit }

@@ -19,6 +19,7 @@ import { noteGauges, renderUsageView, setPlanLimit } from './usage';
 import { workstreamFile } from './workstreams';
 import { onGitChanges, renderGit, setFetchMinutes } from './git';
 import { reopenProjects } from './app';
+import { renderFramework } from './framework';
 
 // ---------- events ----------
 
@@ -134,6 +135,10 @@ export function onEvent(e: SidecarEvent): void {
     case 'git':
       p.git = e.info;
       if (isActive) renderGit();
+      return;
+    case 'framework':
+      p.frameworkStatus = e.status;
+      if (isActive) renderFramework();
       return;
     case 'usage':
       p.usage = e.usage;
@@ -287,6 +292,7 @@ export function onEvent(e: SidecarEvent): void {
       return renderSession();
     case 'busy':
       renderPriorities(p);
+      renderFramework(); // its Upgrade waits for the agent to finish
       return renderComposer();
     case 'processes':
       // A workstream's subagent starting or ending changes its state on the board.

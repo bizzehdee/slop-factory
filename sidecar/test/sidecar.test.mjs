@@ -530,7 +530,7 @@ test('basic AGENTS.md is the task-tracking standard alone, a level down, with fe
   const standard = '---\nname: task-tracking\n---\n\n# Task tracking\n\n## Delivery phases\n\nSee the plan ([[project-planning]]). Commit per [[git-and-commits]].\n\n```markdown\n# Tasks\n```\n';
   const out = basicAgentsMd(standard);
   assert.match(out, /^# Agent instructions\n/);
-  assert.match(out, /\n## Task tracking\n\n### Delivery phases\n/);
+  assert.match(out, /\n## Task tracking\n\n<!-- agent-framework task-tracking: [0-9a-f]{8} -->\n\n### Delivery phases\n/);
   assert.match(out, /See the plan\. Commit per the git and commits standard\./);
   assert.match(out, /```markdown\n# Tasks\n```/);
   assert.doesNotMatch(out, /name: task-tracking/);
@@ -1098,5 +1098,117 @@ test("the window's settings are kept in config.json, and null puts one back to i
     if (saved === undefined) delete process.env.SLOP_FACTORY_CONFIG_DIR;
     else process.env.SLOP_FACTORY_CONFIG_DIR = saved;
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a task-tracking-only AGENTS.md is checked and upgraded by its section, leaving the rest alone', async () => {
+  const { basicAgentsMd, standardVersion } = await import('../dist/newproject.js');
+  const { checkBasic, upgradeBasic } = await import('../dist/frameworkupdate.js');
+  const v1 = '---\nname: task-tracking\n---\n\n# Task tracking\n\n## Bugs\n\nKeep tasks/bugs.md.\n';
+  const v2 = v1.replace('Keep tasks/bugs.md.', 'Keep tasks/bugs.md, one heading per bug.\n\n```md\n## Not a heading\n```');
+  const made = basicAgentsMd(v1);
+  assert.match(made, new RegExp(`<!-- agent-framework task-tracking: ${standardVersion(v1)} -->`));
+  assert.deepEqual(checkBasic(made, v1), { installed: standardVersion(v1), current: standardVersion(v1), outdated: false, differ: 0, missing: 0 });
+
+  // The project added its own section after; only task tracking changes.
+  const own = `${made}\n## Our rules\n\nUse tabs.\n`;
+  const status = checkBasic(own, v2);
+  assert.equal(status.outdated, true);
+  assert.equal(status.installed, standardVersion(v1));
+  const upgraded = upgradeBasic(own, v2);
+  assert.match(upgraded, /^# Agent instructions\n/);
+  assert.match(upgraded, /one heading per bug\.\n\n```md\n## Not a heading\n```\n\n## Our rules\n\nUse tabs\.\n$/);
+  assert.match(upgraded, new RegExp(`task-tracking: ${standardVersion(v2)}`));
+  assert.equal(checkBasic(upgraded, v2).outdated, false);
+
+  // Made before the stamp: the same text still counts as current.
+  const unstamped = made.replace(/<!-- agent-framework task-tracking: [0-9a-f]+ -->\n\n/, '');
+  assert.deepEqual(checkBasic(unstamped, v1), { installed: 'unstamped', current: standardVersion(v1), outdated: false, differ: 0, missing: 0 });
+});
+
+test('the installer\'s check and upgrade output is read for versions, counts and a short log', async () => {
+  const { parseCheck, logSummary } = await import('../dist/frameworkupdate.js');
+  assert.deepEqual(parseCheck('Checking: /p\n\nInstalled version: 86b94f42\nCurrent version:   86b94f42\n35 up to date, 0 differ, 0 missing.\nUp to date.\n'), {
+    installed: '86b94f42', current: '86b94f42', outdated: false, differ: 0, missing: 0,
+  });
+  assert.deepEqual(parseCheck('  differs  /p/AGENTS.md\n\nInstalled version: unstamped\nCurrent version:   9c1e0000\n30 up to date, 1 differ, 4 missing.\nOut of date. Re-install: ./install.sh /p --force\n'), {
+    installed: 'unstamped', current: '9c1e0000', outdated: true, differ: 1, missing: 4,
+  });
+  const files = Array.from({ length: 15 }, (_, i) => `  + /p/.agents/skills/s${i}/SKILL.md`).join('\n');
+  const log = logSummary(`Upgrading: /p\nAdapters kept: claude\nStacks kept:   any\n\n${files}\n\n15 file(s) written, 0 skipped.\n\nNothing left over. The install is on the current layout.\n`, '/p');
+  assert.equal(log.split('\n').length, 12 + 3);
+  assert.match(log, /^\+ \.agents\/skills\/s0\/SKILL\.md\n/);
+  assert.match(log, /…and 3 more\n15 file\(s\) written, 0 skipped\.\nNothing left over/);
+});
+
+test('a project\'s agent-framework is checked against the app\'s copy, and upgraded through its installer', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'desk-fw-'));
+  const prev = process.env.SLOP_FACTORY_CONFIG_DIR;
+  process.env.SLOP_FACTORY_CONFIG_DIR = path.join(root, 'config');
+  try {
+    const { execFileSync } = await import('node:child_process');
+    // A stand-in copy whose installer answers --check from a file and --upgrade by writing the version.
+    const fw = path.join(root, 'config', 'agent-framework');
+    await mkdir(path.join(fw, 'standards'), { recursive: true });
+    await writeFile(path.join(fw, 'standards', 'task-tracking.md'), '# Task tracking\n\n## Bugs\n\nKeep tasks/bugs.md.\n');
+    await writeFile(
+      path.join(fw, 'install.sh'),
+      [
+        'have=$(grep -o "Standards version: [0-9a-f]*" "$1/AGENTS.md" | sed "s/.*: //")',
+        'if [ "$2" = --check ]; then',
+        '  echo "Installed version: $have"; echo "Current version:   bbbb2222"',
+        '  if [ "$have" = bbbb2222 ]; then echo "3 up to date, 0 differ, 0 missing."; echo "Up to date."; exit 0; fi',
+        '  echo "1 up to date, 2 differ, 0 missing."; echo "Out of date."; exit 1',
+        'fi',
+        'echo "<!-- Standards version: bbbb2222 | stacks: any -->" > "$1/AGENTS.md"; echo "  + $1/AGENTS.md"; echo "1 file(s) written, 0 skipped."',
+      ].join('\n') + '\n',
+    );
+    execFileSync('git', ['init', '-q', fw]);
+    const { FrameworkMonitor, frameworkKind } = await import('../dist/frameworkupdate.js');
+
+    const dir = path.join(root, 'full');
+    await mkdir(dir);
+    await writeFile(path.join(dir, 'AGENTS.md'), '<!-- Standards version: aaaa1111 | stacks: any -->\n');
+    assert.equal(await frameworkKind(dir), 'full');
+    const seen = [];
+    const notices = [];
+    let dismissed;
+    let busy = true;
+    const m = new FrameworkMonitor(dir, {
+      emit: (s) => seen.push(s),
+      notice: (level, text) => notices.push(text),
+      dismissed: () => dismissed,
+      undismiss: async () => (dismissed = undefined),
+      agentBusy: () => busy,
+      changed: () => {},
+    });
+    await m.check(false);
+    assert.deepEqual({ ...seen.at(-1) }, { kind: 'full', installed: 'aaaa1111', current: 'bbbb2222', outdated: true, differ: 2, missing: 0, checking: false, error: undefined, dismissed: false });
+
+    // "Not now" holds for this version; asking again from the menu shows it again.
+    dismissed = 'bbbb2222';
+    await m.check(false);
+    assert.equal(seen.at(-1).dismissed, true);
+    await m.check(true);
+    assert.equal(seen.at(-1).dismissed, false);
+    assert.match(notices.at(-1), /out of date here \(aaaa1111 → bbbb2222\)/);
+
+    // Not while the agent is working.
+    await m.upgrade();
+    assert.match(notices.at(-1), /agent is working/);
+    busy = false;
+    await m.upgrade();
+    assert.match(await readFile(path.join(dir, 'AGENTS.md'), 'utf8'), /bbbb2222/);
+    assert.equal(seen.at(-1).outdated, false);
+    assert.match(notices.at(-1), /^Upgraded agent-framework from aaaa1111 to bbbb2222\.[\s\S]*\n\+ AGENTS\.md\n1 file\(s\) written/);
+
+    const none = path.join(root, 'none');
+    await mkdir(none);
+    assert.equal(await frameworkKind(none), 'none');
+    m.stop();
+  } finally {
+    if (prev === undefined) delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    else process.env.SLOP_FACTORY_CONFIG_DIR = prev;
+    await rm(root, { recursive: true, force: true });
   }
 });

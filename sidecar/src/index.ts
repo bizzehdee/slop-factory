@@ -20,6 +20,7 @@ import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './w
 import { addBug, addQuestion, addTask } from './capture.js';
 import { UsageLedger } from './usage.js';
 import { GitMonitor, uncommittedChanges } from './git.js';
+import { FrameworkMonitor } from './frameworkupdate.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
@@ -58,7 +59,7 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
   'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -74,6 +75,7 @@ interface Project {
   openPermissions: Set<string>;
   laneRun?: LaneRun | null;
   git: GitMonitor;
+  framework: FrameworkMonitor;
   onEvent?: (e: ProjectEvent) => void;
 }
 
@@ -192,7 +194,15 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
     emit: (info) => out({ type: 'git', info }),
     notice: (level, text) => out({ type: 'notice', level, text }),
   });
-  const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent, git };
+  const fwMonitor = new FrameworkMonitor(dir, {
+    emit: (status) => out({ type: 'framework', status }),
+    notice: (level, text) => out({ type: 'notice', level, text }),
+    dismissed: () => providers.frameworkDismissed(dir),
+    undismiss: () => providers.dismissFramework(dir, null),
+    agentBusy: () => project.session.busy,
+    changed: () => git.poke(),
+  });
+  const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent, git, framework: fwMonitor };
   projects.set(dir, project);
   void providers.projectOpened(dir).catch(() => undefined);
   // A turn ending, task files changing or a worktree merging can all move the repository on.
@@ -200,6 +210,7 @@ async function startProject(dir: string, requested?: PermissionModeName): Promis
     if (e.type === 'turnEnd' || e.type === 'tasks' || e.type === 'worktrees' || (e.type === 'busy' && !e.busy)) git.poke();
   };
   git.start();
+  fwMonitor.start();
 
   tasks.start();
   session.processes.clear();
@@ -218,6 +229,7 @@ async function closeProject(dir: string): Promise<void> {
   if (!p) return;
   projects.delete(dir);
   p.git.stop();
+  p.framework.stop();
   p.session.close();
   await p.tasks.stop();
   emit({ type: 'closed', project: dir });
@@ -435,6 +447,16 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).git.push().catch(failed("Couldn't push"));
     case 'gitInit':
       return need(cmd.project).git.init().catch(failed("Couldn't make this a git repository"));
+    case 'frameworkCheck':
+      return need(cmd.project).framework.check(true);
+    case 'frameworkUpgrade':
+      return need(cmd.project).framework.upgrade();
+    case 'frameworkDismiss': {
+      const p = need(cmd.project);
+      if (!p.framework.status.current) return;
+      await providers.dismissFramework(p.dir, p.framework.status.current);
+      return p.out({ type: 'framework', status: { ...p.framework.status, dismissed: true } });
+    }
     case 'setAutoPull': {
       const p = need(cmd.project);
       await providers.setAutoPull(p.dir, cmd.on);

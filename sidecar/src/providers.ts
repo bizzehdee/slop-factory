@@ -27,6 +27,7 @@ interface DeskState {
   activeProject?: string; // the one that was showing
   prefs?: Record<string, string>; // the window's settings: theme, notifications, where new projects go
   projectTaskStart?: Record<string, TaskStart>; // projects whose tasks start differently from the default
+  frameworkDismissed?: Record<string, string>; // the agent-framework version each project said "not now" to
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -54,6 +55,7 @@ export class ProviderStore {
         openProjects: Array.isArray(raw.openProjects) ? raw.openProjects.filter((d: unknown) => typeof d === 'string') : undefined,
         activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
         projectTaskStart: raw.projectTaskStart && typeof raw.projectTaskStart === 'object' ? Object.fromEntries(Object.entries(raw.projectTaskStart).filter(([, v]) => TASK_STARTS.includes(v as TaskStart))) as Record<string, TaskStart> : undefined,
+        frameworkDismissed: raw.frameworkDismissed && typeof raw.frameworkDismissed === 'object' ? Object.fromEntries(Object.entries(raw.frameworkDismissed).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
         prefs: raw.prefs && typeof raw.prefs === 'object' ? Object.fromEntries(Object.entries(raw.prefs).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
       };
     } catch {
@@ -148,6 +150,19 @@ export class ProviderStore {
     if (mode && TASK_STARTS.includes(mode)) map[dir] = mode;
     else delete map[dir];
     this.state.projectTaskStart = map;
+    await this.save();
+  }
+
+  /** The agent-framework version this project was last told "not now" about, if any. */
+  frameworkDismissed(dir: string): string | undefined {
+    return this.state.frameworkDismissed?.[dir];
+  }
+
+  async dismissFramework(dir: string, version: string | null): Promise<void> {
+    const map = { ...(this.state.frameworkDismissed ?? {}) };
+    if (version) map[dir] = version;
+    else delete map[dir];
+    this.state.frameworkDismissed = map;
     await this.save();
   }
 

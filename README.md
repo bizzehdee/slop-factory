@@ -211,11 +211,31 @@ you; leave it empty and nothing is sent.
 
 ![The New project dialog](docs/screenshots/new-project.png)
 
+### Keeping agent-framework up to date
+
+When a project that uses agent-framework opens, and once a day while it stays open, the app
+compares the project's copy with the current agent-framework. If they differ, a line under the git
+status says so, with **Upgrade** and **Not now**:
+
+- **Upgrade** brings the project up to date. A full install goes through agent-framework's own
+  installer (`--upgrade`), which keeps the adapters and stacks the project already has. A
+  task-tracking-only project gets the task tracking section of its `AGENTS.md` rewritten, and the
+  rest of the file is left alone. The changes then show under **uncommitted** for you to look over
+  before committing. Any edits you made to the framework's files are replaced. The button waits
+  while the agent is working in the project.
+- **Not now** hides the line until agent-framework changes again.
+
+The line also shows when someone has edited the framework's files in the project, though the
+version is current. Then the button says **Restore**. **Check agent-framework** in the project
+menu fetches the latest agent-framework and checks straight away. Projects that don't use
+agent-framework are never checked.
+
 ## The project menu
 
 The ⋯ beside the project's name opens its folder in your file manager, opens it in an editor
 (Visual Studio Code, Cursor, Zed, Sublime Text, IntelliJ IDEA, WebStorm or PyCharm, whichever are
-installed), shows the plan, copies the path or closes the project.
+installed), shows the plan, checks whether its agent-framework is current, copies the path or
+closes the project.
 
 ![The project menu with Open with listing the installed editors](docs/screenshots/project-menu.png)
 

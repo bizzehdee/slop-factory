@@ -2930,6 +2930,12 @@ textarea {
 .git-status[hidden] {
   display: none;
 }
+.framework-update {
+  margin-top: 4px;
+}
+.framework-update-text {
+  color: var(--clay-strong);
+}
 .git-branch {
   display: inline-flex;
   align-items: center;

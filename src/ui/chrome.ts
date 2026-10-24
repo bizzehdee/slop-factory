@@ -13,6 +13,7 @@ import { openSubagent } from './subagents';
 import { renderAttachments, renderSlashMenu } from './composer';
 import { accountLimits, limitText, openUsage, planLimit, renderGauges, usageSummary } from './usage';
 import { renderGit } from './git';
+import { frameworkMenu, renderFramework } from './framework';
 
 // ---------- projects list ----------
 
@@ -195,6 +196,7 @@ export function projectMenu(p: Proj): MenuItem[] {
     },
   ];
   if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
+  items.push(...frameworkMenu(p));
   items.push({ label: 'Copy path', run: () => void navigator.clipboard?.writeText(p.dir) });
   items.push({ label: 'Close project', run: () => closeProject(p) });
   return items;
@@ -217,6 +219,7 @@ export function renderHeader(): void {
   $('framework-badge').textContent = fw?.agentsMd ? (fw.agentsSkills.length ? `AGENTS.md with ${fw.agentsSkills.length} standards` : 'AGENTS.md') : '';
   document.title = `${p.name} – Slop Factory`;
   renderGit();
+  renderFramework();
 }
 
 // Claude Code's working indicator cycles through these glyphs.

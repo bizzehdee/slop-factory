@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -33,22 +34,39 @@ async function sh(cmd: string, args: string[], cwd: string, log: (line: string) 
 }
 
 /** A copy of agent-framework kept beside the app's settings, fetched or brought up to date. */
-export async function frameworkCopy(log: (line: string) => void): Promise<string> {
+let updating: Promise<string> | undefined;
+export function frameworkCopy(log: (line: string) => void, maxAgeMs = 0): Promise<string> {
+  // Projects opening together share one update rather than run git on the same copy at once.
+  updating ??= updateCopy(log, maxAgeMs).finally(() => (updating = undefined));
+  return updating;
+}
+
+async function updateCopy(log: (line: string) => void, maxAgeMs: number): Promise<string> {
   const dir = path.join(configDir(), 'agent-framework');
+  // Written after each successful clone or pull, so a recent copy isn't fetched again.
+  const marker = path.join(dir, '.git', 'slop-factory-updated');
   const have = await fs.stat(path.join(dir, '.git')).then(() => true, () => false);
   if (!have) {
     await fs.mkdir(path.dirname(dir), { recursive: true });
     await sh('git', ['clone', '--depth', '1', FRAMEWORK_REPO, dir], path.dirname(dir), log);
+    await fs.writeFile(marker, '').catch(() => undefined);
     return dir;
   }
+  const updated = await fs.stat(marker).then((s) => s.mtimeMs, () => 0);
+  if (maxAgeMs && Date.now() - updated < maxAgeMs) return dir;
   try {
     await sh('git', ['pull', '--ff-only'], dir, log);
+    await fs.writeFile(marker, '').catch(() => undefined);
   } catch (err) {
     // Offline or diverged: the copy we have still installs.
     log(`Couldn't update agent-framework (${err instanceof Error ? err.message : String(err)}); using the copy already here.`);
   }
   return dir;
 }
+
+/** A short fingerprint of the task-tracking standard, stamped into AGENTS.md so it can be checked later. */
+export const standardVersion = (standard: string): string => createHash('sha256').update(standard).digest('hex').slice(0, 8);
+export const TASK_TRACKING_STAMP = /<!-- agent-framework task-tracking: ([0-9a-f]+) -->\n*/;
 
 /**
  * AGENTS.md for "basic task tracking": the framework's task-tracking standard on its own. References
@@ -73,6 +91,7 @@ export function basicAgentsMd(standard: string): string {
     '# Agent instructions\n\n' +
     `This project uses the task and bug tracking rules from [agent-framework](${FRAMEWORK_REPO}) and nothing else from it.\n\n` +
     '## Task tracking\n\n' +
+    `<!-- agent-framework task-tracking: ${standardVersion(standard)} -->\n\n` +
     shifted.trim() +
     '\n'
   );
