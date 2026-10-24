@@ -1,0 +1,209 @@
+import type { SidecarEvent } from '../../sidecar/src/protocol';
+import { renderPriorities, renderTasks } from './board';
+import { activate, renderComposer, renderHeader, renderProcesses, renderProjects, renderSession } from './chrome';
+import { closeDocs, docsView, refreshDocs, renderDocs } from './docs';
+import { $ } from './dom';
+import { loginUrl, onLoginEvent } from './login';
+import { onCreateEvent } from './newproject';
+import { onProbe, probe } from './providers';
+import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
+import { startQueued, trackLane } from './queue';
+import { onMcpServers } from './settings';
+import { active, editorList, newProject, projects, providerList, saveOpenProjects, setEditorList, setProviderList } from './state';
+import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse } from './transcript';
+
+// ---------- events ----------
+
+export let pendingOpen: string | null = null;
+// The project to show once everything has reopened, read once at start-up.
+export let restoreActive: string | null = null;
+export const setPendingOpen = (dir: string | null) => (pendingOpen = dir);
+export const setRestoreActive = (dir: string | null) => (restoreActive = dir);
+
+export function onEvent(e: SidecarEvent): void {
+  switch (e.type) {
+    case 'ready':
+      return;
+    case 'providers':
+      setProviderList(e.list);
+      renderComposer();
+      renderSession();
+      return;
+    case 'probe':
+      return onProbe(e.requestId, e.ok, e.models, e.error);
+    case 'createProgress':
+    case 'projectCreated':
+      return onCreateEvent(e);
+    case 'editors':
+      setEditorList(e.list);
+      return;
+    case 'mcpServers':
+      return onMcpServers(e);
+    case 'auth':
+    case 'loginUrl':
+    case 'loginLine':
+    case 'loginDone':
+      return onLoginEvent(e);
+    case 'globalNotice':
+      if (active) notice(active, e.level, e.text);
+      else console.warn(e.text);
+      if ($<HTMLDialogElement>('provider-dialog').open) $('probe-status').textContent = e.text;
+      return;
+  }
+
+  if (e.type === 'project') {
+    let p = projects.get(e.project);
+    if (!p) {
+      p = newProject(e.project, e.name);
+      projects.set(e.project, p);
+      saveOpenProjects();
+    } else {
+      // A replay (window reloaded): rebuild the transcript from scratch.
+      p.liveText.clear();
+      p.toolCards.clear();
+      p.permissionCards.clear();
+      p.pending.clear();
+    }
+    p.framework = e.framework;
+    p.mode = e.permissionMode;
+    p.providerId = e.providerId;
+    p.replaying = true;
+    emptyTranscript(p);
+    if (!active || restoreActive === p.dir || pendingOpen === p.dir) {
+      if (restoreActive === p.dir) restoreActive = null;
+      if (pendingOpen === p.dir) pendingOpen = null;
+      activate(p);
+    } else renderProjects();
+    return;
+  }
+
+  const p = projects.get(e.project);
+  if (!p) return;
+  const isActive = p === active;
+  const markUnseen = () => {
+    if (!isActive && !p.replaying) p.unseen = true;
+  };
+
+  switch (e.type) {
+    case 'replayDone':
+      p.replaying = false;
+      p.transcript.scrollTop = p.transcript.scrollHeight;
+      break;
+    case 'closed':
+      p.transcript.remove();
+      projects.delete(e.project);
+      saveOpenProjects();
+      if (docsView?.project === e.project) closeDocs();
+      if (isActive) activate([...projects.values()][0]);
+      else renderProjects();
+      return;
+    case 'session':
+      p.session = e.info;
+      break;
+    case 'mode':
+      p.mode = e.mode;
+      if (isActive) renderComposer();
+      break;
+    case 'provider':
+      p.providerId = e.providerId;
+      p.session = undefined;
+      p.lastTurn = undefined;
+      if (isActive) {
+        renderComposer();
+        renderSession();
+      }
+      break;
+    case 'busy': {
+      const finished = p.busy && !e.busy;
+      if (finished) markUnseen();
+      p.busy = e.busy;
+      p.status = e.status;
+      if (finished && !p.replaying) startQueued(p);
+      break;
+    }
+    case 'user':
+      userMessage(p, e.text, e.action);
+      scrollToEnd(p);
+      p.freshTurn = true;
+      break;
+    case 'assistantDelta':
+      return assistantDelta(p, e.msgId, e.index, e.text);
+    case 'assistantText':
+      assistantFinal(p, e.msgId, e.text, e.parent);
+      if (e.parent) return;
+      noteReply(p, e.msgId, e.text);
+      if (isActive) renderQuestions();
+      return;
+    case 'askQuestions':
+      askQuestions(p, e.id, e.questions);
+      break;
+    case 'thinking':
+      return;
+    case 'toolUse':
+      return toolUse(p, e.id, e.name, e.input, e.parent);
+    case 'toolResult':
+      return toolResult(p, e.toolUseId, e.isError, e.preview);
+    case 'permissionRequest':
+      permissionRequest(p, e.id, e.toolName, e.input, e.reason);
+      break;
+    case 'permissionResolved':
+      if (p.asked.delete(e.id) && isActive) {
+        if (docsView?.question === `ask:${e.id}`) afterAnswer(p);
+        else renderQuestions();
+      }
+      return markAnswered(p, e.id, 'Cancelled');
+    case 'turnEnd':
+      p.lastTurn = e;
+      if (e.stopped) notice(p, 'info', 'Stopped.');
+      else if (e.isError) notice(p, 'error', e.errors?.length ? e.errors.join('\n') : 'The turn ended with an error.');
+      break;
+    case 'processes':
+      p.processes = e.list;
+      trackLane(p);
+      break;
+    case 'tasks':
+      p.tasks = e.files;
+      p.docs = new Set(e.docs);
+      p.docQuestions = e.questions ?? [];
+      refreshDocs(p);
+      break;
+    case 'priorities':
+      p.priorities = e.order;
+      p.subagentLane = new Set(e.subagent ?? []);
+      break;
+    case 'docs':
+      if (docsView && docsView.project === p.dir && docsView.requestId === e.requestId) {
+        docsView.docs = e.docs;
+        renderDocs();
+      }
+      return;
+    case 'notice':
+      notice(p, e.level, e.text);
+      break;
+  }
+
+  renderProjects();
+  if (!isActive) return;
+  switch (e.type) {
+    case 'session':
+    case 'turnEnd':
+      return renderSession();
+    case 'busy':
+      renderPriorities(p);
+      return renderComposer();
+    case 'processes':
+      return renderProcesses();
+    case 'askQuestions':
+      // Claude waits on the answer, so the question opens straight away unless you're mid-way through something else.
+      if (!p.replaying && (!docsView || docsView.question)) openQuestion(p, `ask:${e.id}`);
+      else renderQuestions();
+      return renderComposer();
+    case 'tasks':
+    case 'priorities':
+      renderTasks();
+      renderQuestions();
+      renderHeader();
+      if (docsView) renderDocs();
+      return;
+  }
+}
