@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { AgentSession } from './agent.js';
 import { FakeSession } from './fake-agent.js';
+import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
 import { Priorities, promptFor, type DeskPrompts } from './actions.js';
@@ -17,7 +18,7 @@ import { authStatus, LoginFlow } from './auth.js';
 import { listMcp, removeMcp, saveMcp } from './mcp.js';
 import { discardWorktree, listWorktrees, mergeWorktree, worktreeDiff } from './worktrees.js';
 import { appVersion, migrateConfigDir, readProjectSettings } from './names.js';
-import type { PermissionModeName, ProjectEvent, SidecarEvent, UiCommand } from './protocol.js';
+import type { PermissionModeName, ProjectEvent, ProviderConfig, SidecarEvent, UiCommand } from './protocol.js';
 
 // stdout is the protocol channel. Anything else that tries to print goes to stderr.
 const writeOut = process.stdout.write.bind(process.stdout);
@@ -60,7 +61,13 @@ const projects = new Map<string, Project>();
 // The interface tests run against a scripted agent instead of a real one.
 const FAKE_AGENT = process.env.SLOP_FACTORY_FAKE_AGENT === '1';
 type Session = AgentSession | FakeSession;
-const newSession = (...args: ConstructorParameters<typeof AgentSession>): Session => (FAKE_AGENT ? new FakeSession(...args) : new AgentSession(...args));
+/** A session that remembers its conversation id, so the project can pick it up after a restart. */
+function newSession(dir: string, mode: PermissionModeName, out: (e: ProjectEvent) => void, provider: ProviderConfig, resume?: string): Session {
+  const s = FAKE_AGENT ? new FakeSession(dir, mode, out, provider, resume) : new AgentSession(dir, mode, out, provider, resume);
+  s.onSession = (id) => void providers.setSession(dir, id).catch(() => undefined);
+  return s;
+}
+const loadConversation = (id: string, dir: string) => (FAKE_AGENT ? Promise.resolve(FakeSession.history(id)) : loadHistory(id, dir));
 const checkAuth = () => (FAKE_AGENT ? Promise.resolve({ loggedIn: true, method: 'fake' }) : authStatus());
 const providers = new ProviderStore();
 
@@ -94,10 +101,25 @@ function replay(p: Project): void {
   send({ type: 'replayDone' });
 }
 
-async function openProject(dirIn: string, requested?: PermissionModeName): Promise<void> {
+// Projects part-way through opening. The window hears about a project before it's ready, and its
+// commands for it wait here rather than fail.
+const opening = new Map<string, Promise<void>>();
+
+function openProject(dirIn: string, requested?: PermissionModeName): Promise<void> {
   const dir = path.resolve(dirIn);
   const existing = projects.get(dir);
-  if (existing) return replay(existing);
+  if (existing) {
+    replay(existing);
+    return Promise.resolve();
+  }
+  const pending = opening.get(dir);
+  if (pending) return pending;
+  const done = startProject(dir, requested).finally(() => opening.delete(dir));
+  opening.set(dir, done);
+  return done;
+}
+
+async function startProject(dir: string, requested?: PermissionModeName): Promise<void> {
   // Each project reopens in the mode you last chose for it.
   const mode = requested ?? providers.modeFor(dir);
 
@@ -117,7 +139,12 @@ async function openProject(dirIn: string, requested?: PermissionModeName): Promi
   out(queueEvent(priorities));
 
   const tasks = new TaskWatcher(dir, config, (files, docs, questions) => out({ type: 'tasks', files, docs, questions }));
-  const session = newSession(dir, mode, out, provider);
+  // Pick up the project's last conversation, showing what it said before.
+  const previous = providers.sessionFor(dir);
+  const history = previous ? await loadConversation(previous, dir).catch(() => []) : [];
+  for (const e of history) out(e);
+  if (history.length) out({ type: 'notice', level: 'info', text: 'Picked up where you left off. Choose New conversation in the project menu to start afresh.' });
+  const session = newSession(dir, mode, out, provider, history.length ? previous : undefined);
   const project: Project = { ...shell, out, session, tasks, priorities, prompts, projectEvent };
   projects.set(dir, project);
 
@@ -137,15 +164,17 @@ async function closeProject(dir: string): Promise<void> {
   emit({ type: 'closed', project: dir });
 }
 
-/** Restart a project's Claude Code session, e.g. so it picks up changed MCP servers. */
-function restartSession(p: Project): void {
+/** Restart a project's agent: so it picks up changed MCP servers (same conversation), or to start afresh. */
+function restartSession(p: Project, fresh: boolean): void {
   const mode = p.session.mode;
   p.session.close();
-  p.session = newSession(p.dir, mode, p.out, p.session.provider);
+  const resume = fresh ? undefined : providers.sessionFor(p.dir);
+  if (fresh) void providers.setSession(p.dir, undefined);
+  p.session = newSession(p.dir, mode, p.out, p.session.provider, resume);
   p.session.processes.clear();
   p.session.start();
   p.latest.delete('session');
-  p.out({ type: 'notice', level: 'info', text: 'Restarted the agent. This starts a new conversation.' });
+  p.out({ type: 'notice', level: 'info', text: fresh ? 'Started a new conversation.' : 'Restarted the agent. The conversation carries on.' });
 }
 
 /** Restart a project's Claude Code session on another provider. The task board keeps running. */
@@ -153,6 +182,7 @@ async function switchProvider(p: Project, providerId: string): Promise<void> {
   const provider = await providers.setForProject(p.dir, providerId);
   const mode = p.session.mode;
   p.session.close();
+  await providers.setSession(p.dir, undefined);
   p.session = newSession(p.dir, mode, p.out, provider);
   p.session.processes.clear();
   p.session.start();
@@ -196,6 +226,7 @@ function need(dir: string): Project {
 }
 
 async function handle(cmd: UiCommand): Promise<void> {
+  if ('project' in cmd && cmd.project) await opening.get(cmd.project)?.catch(() => undefined);
   switch (cmd.type) {
     case 'open':
       return openProject(cmd.projectDir, cmd.permissionMode);
@@ -233,7 +264,7 @@ async function handle(cmd: UiCommand): Promise<void> {
       return;
     }
     case 'restartSession':
-      return restartSession(need(cmd.project));
+      return restartSession(need(cmd.project), !!cmd.fresh);
     case 'listWorktrees': {
       const p = need(cmd.project);
       return p.out({ type: 'worktrees', list: await listWorktrees(p.dir) });

@@ -171,6 +171,13 @@ export function projectMenu(p: Proj): MenuItem[] {
   const items: MenuItem[] = [
     { label: 'Open directory', run: () => send({ type: 'openFolder', project: p.dir }) },
     { label: 'Open with', submenu: editors },
+    {
+      label: 'New conversation',
+      run: () => {
+        if (p.busy && !confirm(`The agent is working in ${p.name}. Stop it and start a new conversation?`)) return;
+        send({ type: 'restartSession', project: p.dir, fresh: true });
+      },
+    },
   ];
   if (planRel(p)) items.push({ label: 'Show plan', run: () => togglePlan(p) });
   items.push({ label: 'Copy path', run: () => void navigator.clipboard?.writeText(p.dir) });

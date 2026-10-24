@@ -27,10 +27,8 @@ async function waitForHttp(url, ms) {
 export async function startApp() {
   const work = await mkdtemp(path.join(tmpdir(), 'slop-ui-'));
   const env = { ...process.env, SLOP_FACTORY_FAKE_AGENT: '1', SLOP_FACTORY_CONFIG_DIR: path.join(work, 'config') };
-  const procs = [
-    spawn(process.execPath, [path.join(root, 'scripts', 'dev-bridge.mjs')], { cwd: root, env, stdio: ['ignore', 'ignore', 'inherit'] }),
-    spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', '1420', '--strictPort'], { cwd: root, env, stdio: 'ignore' }),
-  ];
+  const bridge = () => spawn(process.execPath, [path.join(root, 'scripts', 'dev-bridge.mjs')], { cwd: root, env, stdio: ['ignore', 'ignore', 'inherit'] });
+  const procs = [bridge(), spawn(process.execPath, [path.join(root, 'node_modules', 'vite', 'bin', 'vite.js'), '--port', '1420', '--strictPort'], { cwd: root, env, stdio: 'ignore' })];
   await waitForHttp(URL_BASE, 30_000);
   const browser = await chromium.launch(process.env.PW_CHROMIUM ? { executablePath: process.env.PW_CHROMIUM } : {});
   let n = 0;
@@ -47,6 +45,16 @@ export async function startApp() {
       if (dirs.length) await page.waitForSelector('#project-header:not([hidden])', { timeout: 15_000 });
       page.errors = errors;
       return page;
+    },
+    /** Stop the bridge and its sidecar and start fresh ones, as quitting and reopening the app does. */
+    async restartSidecar() {
+      const old = procs[0];
+      const gone = new Promise((r) => old.once('exit', r));
+      old.kill('SIGINT');
+      await gone;
+      await new Promise((r) => setTimeout(r, 300));
+      procs[0] = bridge();
+      await new Promise((r) => setTimeout(r, 500));
     },
     /** A project on disk laid out the agent-framework way. */
     async project(files = {}) {

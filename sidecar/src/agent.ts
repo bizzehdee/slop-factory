@@ -82,9 +82,13 @@ export class AgentSession {
     private permissionMode: PermissionModeName,
     private emit: (e: ProjectEvent) => void,
     readonly provider: ProviderConfig = SUBSCRIPTION,
+    private resume?: string, // a conversation to pick up
   ) {
     this.processes = new ProcessTracker((list) => this.emit({ type: 'processes', list }));
   }
+
+  /** Told the conversation's id once Claude Code starts, so it can be picked up later. */
+  onSession?: (id: string) => void;
 
   start(): void {
     const { env, model } = sessionSettings(this.provider);
@@ -104,6 +108,7 @@ export class AgentSession {
         stderr: (data) => process.stderr.write(`[claude] ${data}`),
         ...(env ? { env } : {}),
         ...(model ? { model } : {}),
+        ...(this.resume ? { resume: this.resume } : {}),
       },
     });
     void this.pump();
@@ -282,6 +287,7 @@ export class AgentSession {
   private handleSystem(msg: Extract<SDKMessage, { type: 'system' }>): void {
     switch (msg.subtype) {
       case 'init':
+        if (msg.session_id) this.onSession?.(msg.session_id);
         this.emit({
           type: 'session',
           info: {

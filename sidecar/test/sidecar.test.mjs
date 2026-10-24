@@ -642,3 +642,21 @@ test('worktrees: list a subagent branch, diff it, merge it, refuse a conflicting
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('a stored conversation becomes the events that show it, without Claude Code\'s own additions', async () => {
+  const { messagesToEvents } = await import('../dist/history.js');
+  const events = messagesToEvents([
+    { type: 'user', uuid: 'u1', parent_tool_use_id: null, message: { role: 'user', content: 'Fix the bug' } },
+    { type: 'user', uuid: 'u0', parent_tool_use_id: null, message: { role: 'user', content: '<system-reminder>internal</system-reminder>' } },
+    { type: 'assistant', uuid: 'a1', parent_tool_use_id: null, message: { id: 'msg_1', content: [{ type: 'thinking', thinking: 'hm' }, { type: 'text', text: 'Looking.' }, { type: 'tool_use', id: 'tu1', name: 'Bash', input: { command: 'ls' } }] } },
+    { type: 'user', uuid: 'u2', parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu1', content: 'a.txt', is_error: false }] } },
+    { type: 'assistant', uuid: 'a2', parent_tool_use_id: 'tu9', message: { content: [{ type: 'text', text: 'subagent says hi' }] } },
+  ]);
+  assert.deepEqual(events, [
+    { type: 'user', text: 'Fix the bug' },
+    { type: 'assistantText', msgId: 'msg_1', text: 'Looking.', parent: null },
+    { type: 'toolUse', id: 'tu1', name: 'Bash', input: { command: 'ls' }, parent: null },
+    { type: 'toolResult', toolUseId: 'tu1', isError: false, preview: 'a.txt' },
+    { type: 'assistantText', msgId: 'a2', text: 'subagent says hi', parent: 'tu9' },
+  ]);
+});

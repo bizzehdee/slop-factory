@@ -1,4 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { appendFileSync, mkdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { messagesToEvents } from './history.js';
+import { configDir } from './names.js';
 import type { AskedQuestion, ItemAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
@@ -45,11 +49,34 @@ export class FakeSession {
     private permissionMode: PermissionModeName,
     private emit: (e: ProjectEvent) => void,
     readonly provider: ProviderConfig = SUBSCRIPTION,
+    private resume?: string,
   ) {
     this.processes = new ProcessTracker((list) => this.emit({ type: 'processes', list }));
   }
 
+  onSession?: (id: string) => void;
+  private sessionId = '';
+
+  /** Its conversations are kept like Claude Code's, one file each, so they can be picked up. */
+  static history(id: string): ProjectEvent[] {
+    try {
+      const lines = readFileSync(path.join(configDir(), 'fake-sessions', `${id}.jsonl`), 'utf8').split('\n').filter(Boolean);
+      return messagesToEvents(lines.map((l) => JSON.parse(l)));
+    } catch {
+      return [];
+    }
+  }
+
+  private record(type: 'user' | 'assistant', text: string): void {
+    const dir = path.join(configDir(), 'fake-sessions');
+    mkdirSync(dir, { recursive: true });
+    const message = type === 'user' ? { role: 'user', content: text } : { role: 'assistant', content: [{ type: 'text', text }] };
+    appendFileSync(path.join(dir, `${this.sessionId}.jsonl`), JSON.stringify({ type, uuid: randomUUID(), message, parent_tool_use_id: null }) + '\n');
+  }
+
   start(): void {
+    this.sessionId = this.resume ?? randomUUID();
+    this.onSession?.(this.sessionId);
     this.emit({
       type: 'session',
       info: {
@@ -79,6 +106,7 @@ export class FakeSession {
     this.pendingTurns++;
     this.emit({ type: 'user', text, action });
     this.emit({ type: 'busy', busy: true });
+    this.record('user', text);
     void this.turn(text);
   }
 
@@ -133,6 +161,7 @@ export class FakeSession {
     const msgId = `msg_${randomUUID()}`;
     this.emit({ type: 'assistantDelta', msgId, index: 0, text: text.slice(0, 10) });
     this.emit({ type: 'assistantText', msgId, text, parent: null });
+    this.record('assistant', text);
   }
 
   private async turn(text: string): Promise<void> {

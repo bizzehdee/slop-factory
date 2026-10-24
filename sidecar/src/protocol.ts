@@ -54,7 +54,7 @@ export type UiCommand =
   | { type: 'listMcp'; project?: string }
   | { type: 'saveMcp'; project?: string; server: McpEntry; previous?: { name: string; scope: McpScope } }
   | { type: 'removeMcp'; project?: string; name: string; scope: McpScope }
-  | { type: 'restartSession'; project: string }
+  | { type: 'restartSession'; project: string; fresh?: boolean } // fresh: a new conversation; otherwise the same one carries on
   | { type: 'listWorktrees'; project: string }
   | { type: 'worktreeDiff'; project: string; path: string; requestId: string }
   | { type: 'mergeWorktree'; project: string; path: string }

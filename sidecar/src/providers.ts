@@ -20,6 +20,7 @@ interface DeskState {
   projectProvider: Record<string, string>;
   projectMode: Record<string, PermissionModeName>;
   defaultMode?: PermissionModeName; // the last mode chosen anywhere; new projects start in it
+  projectSession: Record<string, string>; // each project's conversation, picked up after a restart
 }
 
 const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', 'bypassPermissions'];
@@ -29,7 +30,7 @@ import { appVersion, configDir } from './names.js';
 export { configDir };
 
 export class ProviderStore {
-  private state: DeskState = { providers: [], projectProvider: {}, projectMode: {} };
+  private state: DeskState = { providers: [], projectProvider: {}, projectMode: {}, projectSession: {} };
   private file = path.join(configDir(), 'config.json');
 
   async load(): Promise<void> {
@@ -40,6 +41,7 @@ export class ProviderStore {
         projectProvider: raw.projectProvider && typeof raw.projectProvider === 'object' ? raw.projectProvider : {},
         projectMode: raw.projectMode && typeof raw.projectMode === 'object' ? raw.projectMode : {},
         defaultMode: MODES.includes(raw.defaultMode) ? raw.defaultMode : undefined,
+        projectSession: raw.projectSession && typeof raw.projectSession === 'object' ? raw.projectSession : {},
       };
     } catch {
       /* first run */
@@ -64,6 +66,18 @@ export class ProviderStore {
     else this.state.projectProvider[dir] = p.id;
     await this.save();
     return p;
+  }
+
+  /** The conversation a project picks up when it opens again. */
+  sessionFor(dir: string): string | undefined {
+    return this.state.projectSession[dir];
+  }
+
+  async setSession(dir: string, id: string | undefined): Promise<void> {
+    if (this.state.projectSession[dir] === id) return;
+    if (id) this.state.projectSession[dir] = id;
+    else delete this.state.projectSession[dir];
+    await this.save();
   }
 
   /** The permission mode a project opens in: its own last choice, else the last one chosen anywhere. */

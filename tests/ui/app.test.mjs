@@ -183,3 +183,26 @@ test("a subagent's worktree can be reviewed, merged or discarded", async () => {
   await page.waitForSelector('.notice:has-text("Discarded agent-spike")');
   await page.waitForFunction(() => !document.querySelector('.worktree')?.textContent?.includes('agent-spike'));
 });
+
+test('a conversation carries on after the app restarts, until New conversation', async () => {
+  const dir = await app.project();
+  let page = await app.open(dir);
+  await page.fill('#prompt', 'Remember the word marmalade');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.msg.assistant:has-text("Done: Remember the word marmalade")');
+  await page.close();
+  await app.restartSidecar();
+  page = await app.open(dir);
+  await page.waitForSelector('.msg.user:has-text("Remember the word marmalade")');
+  await page.waitForSelector('.notice:has-text("Picked up where you left off")');
+  assert.equal(await page.locator('.notice.error').count(), 0, 'no errors while the project reopens');
+  await page.click('#project-menu');
+  await page.click('#menu .menu-item:has-text("New conversation")');
+  await page.waitForSelector('.notice:has-text("Started a new conversation.")');
+  await page.close();
+  await app.restartSidecar();
+  page = await app.open(dir);
+  await page.waitForSelector('#project-header:not([hidden])');
+  await page.waitForTimeout(800);
+  assert.equal(await page.locator('.msg.user:has-text("marmalade")').count(), 0);
+});
