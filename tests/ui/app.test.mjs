@@ -658,6 +658,11 @@ test('a run of tool calls folds into one group, and a call left running stops lo
 });
 
 test('projects open when the app quits are open again when it restarts, and closed ones are not', async () => {
+  // Only this test's projects: the earlier tests' are still in the list otherwise.
+  await app.restartSidecar((config) => {
+    config.openProjects = [];
+    delete config.activeProject;
+  });
   const a = await app.project();
   const b = await app.project();
   const name = (d) => path.basename(d);

@@ -1,7 +1,7 @@
 // Starts the interface against a scripted agent (sidecar/src/fake-agent.ts) and gives each test
 // a fresh browser page and a fixture project. Run with: npm run test:ui
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,13 +59,22 @@ export async function startApp() {
       page.errors = errors;
       return page;
     },
-    /** Stop the bridge and its sidecar and start fresh ones, as quitting and reopening the app does. */
-    async restartSidecar() {
+    /**
+     * Stop the bridge and its sidecar and start fresh ones, as quitting and reopening the app does.
+     * editConfig changes ~/.slop-factory/config.json while nothing is running.
+     */
+    async restartSidecar(editConfig) {
       const old = procs[0];
       const gone = new Promise((r) => old.once('exit', r));
       old.kill('SIGINT');
       await gone;
       await new Promise((r) => setTimeout(r, 300));
+      if (editConfig) {
+        const file = path.join(work, 'config', 'config.json');
+        const config = JSON.parse(await readFile(file, 'utf8').catch(() => '{}'));
+        editConfig(config);
+        await writeFile(file, JSON.stringify(config, null, 2));
+      }
       procs[0] = bridge();
       await new Promise((r) => setTimeout(r, 500));
     },
