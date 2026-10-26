@@ -1019,7 +1019,16 @@ textarea {
   text-align: right;
 }
 
+.mode {
+  display: flex;
+  min-width: 0;
+}
 .mode select {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   appearance: none;
   background: none;
   border: 1px solid var(--line);
@@ -1037,7 +1046,11 @@ textarea {
   cursor: default;
   opacity: 0.6;
 }
+#model-picker {
+  max-width: 14rem;
+}
 .mode-button {
+  flex: none;
   background: none;
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -1057,6 +1070,7 @@ textarea {
 }
 
 .round-button {
+  flex: none;
   display: grid;
   place-items: center;
   width: 32px;
@@ -2405,6 +2419,7 @@ textarea {
 
 .dialog-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   padding: 22px 24px 18px;
 }
@@ -2421,6 +2436,7 @@ textarea {
 
 .dialog.settings {
   width: min(640px, calc(100vw - 32px));
+  overflow-x: hidden;
 }
 .settings-head {
   display: flex;
@@ -2429,6 +2445,7 @@ textarea {
 }
 .settings-section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
@@ -2481,6 +2498,7 @@ textarea {
   gap: 1px;
   flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .settings-item-main code {
   font-family: var(--mono);
