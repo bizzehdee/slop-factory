@@ -251,6 +251,7 @@ textarea {
   margin: 4px 0 0;
   padding: 0;
   position: relative;
+  isolation: isolate;
 }
 .spine::before {
   content: '';
