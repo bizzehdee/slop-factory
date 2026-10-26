@@ -147,6 +147,8 @@ export class AgentSession {
   }
 
   private holds = 0; // a compaction before a task: the session stays busy until the task is sent
+        // Without this, Claude Code refuses to switch into bypassPermissions after the session has started.
+        allowDangerouslySkipPermissions: true,
   private idleWaiters: ((stopped: boolean) => void)[] = [];
   private sentAny = false;
 
