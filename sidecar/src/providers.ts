@@ -49,7 +49,7 @@ const MODES: PermissionModeName[] = ['default', 'acceptEdits', 'plan', 'auto', '
 const TASK_STARTS: TaskStart[] = ['current', 'compact', 'new'];
 
 import { appVersion, configDir, writeFileAtomic } from './names.js';
-import { shareConfig } from './shared.js';
+import { loginEnv, shareConfig } from './shared.js';
 
 export { configDir };
 
@@ -420,13 +420,13 @@ export const isThinkingLevel = (v: unknown): v is ThinkingLevel => typeof v === 
  */
 export function sessionSettings(p: ProviderConfig): { env?: Record<string, string | undefined>; model?: string } {
   // Another login: its own Claude Code folder, with its sign-in and history.
-  const account = p.configDir ? { CLAUDE_CONFIG_DIR: p.configDir } : {};
-  if (p.kind === 'subscription') return { ...(p.configDir ? { env: { ...process.env, ...account } } : {}), ...(p.model ? { model: p.model } : {}) };
+  // Its login's folder is always set, so a project on the default login can't run under another's.
+  const login = loginEnv(p.configDir);
+  if (p.kind === 'subscription') return { env: login, ...(p.model ? { model: p.model } : {}) };
   if (!p.baseUrl || !p.model) return {};
   const small = p.smallModel || p.model;
   const env: Record<string, string | undefined> = {
-    ...process.env,
-    ...account,
+    ...login,
     ANTHROPIC_BASE_URL: p.baseUrl,
     ANTHROPIC_AUTH_TOKEN: p.authToken || 'local',
     ANTHROPIC_MODEL: p.model,

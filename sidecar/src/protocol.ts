@@ -25,7 +25,7 @@ export interface ProviderConfig {
 export interface AccountEntry {
   id: string; // "default" is whatever Claude Code is signed in as on this computer
   name: string;
-  email?: string; // known once a session has started under it
+  email?: string; // as the login itself says, each time the list is checked
   organization?: string;
   plan?: string;
   loggedIn?: boolean;
@@ -193,6 +193,9 @@ export interface AuthState {
   loggedIn: boolean;
   method?: string; // e.g. "oauth_token", "api_key"
   provider?: string; // "firstParty", "bedrock", ...
+  email?: string; // who it's signed in as, when signed in to a Claude account
+  organization?: string;
+  plan?: string;
   error?: string;
 }
 

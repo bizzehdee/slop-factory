@@ -8,8 +8,27 @@ import path from 'node:path';
 
 const SHARED = ['CLAUDE.md', 'settings.json', 'keybindings.json', 'skills', 'commands', 'agents', 'output-styles', 'hooks', 'plugins'];
 
+// The default login's folder as the app was started with it. process.env can't be trusted for this
+// later: reading another login's conversations sets CLAUDE_CONFIG_DIR for the SDK while it reads.
+const HOME_CONFIG_DIR = process.env.CLAUDE_CONFIG_DIR || undefined;
+
 /** The default login's Claude Code folder. */
-export const homeConfigDir = (): string => process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
+export const homeConfigDir = (): string => HOME_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
+
+/** CLAUDE_CONFIG_DIR as one login needs it: its own folder, or the default login's (unset: ~/.claude). */
+export const loginDir = (configDir?: string): string | undefined => configDir ?? HOME_CONFIG_DIR;
+
+/**
+ * The environment to run Claude Code under one login, with its folder always set explicitly, so
+ * nothing for one login can run under another's whatever process.env says at the time.
+ */
+export function loginEnv(configDir?: string): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  const dir = loginDir(configDir);
+  if (dir) env.CLAUDE_CONFIG_DIR = dir;
+  else delete env.CLAUDE_CONFIG_DIR;
+  return env;
+}
 
 const exists = (p: string) => fs.lstat(p).then(() => true, () => false);
 

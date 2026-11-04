@@ -1,19 +1,30 @@
 import { deleteSession, forkSession, getSessionMessages, getSubagentMessages, listSessions, renameSession } from '@anthropic-ai/claude-agent-sdk';
 import type { SessionEntry } from './protocol.js';
+import { loginDir } from './shared.js';
 
 // A project's conversations, as Claude Code keeps them on disk. They live in the login's config
 // folder, which the SDK's readers take from the environment, so each call runs with the folder set
 // and one at a time, since projects on different logins can ask together.
 
-const HOME_DIR = process.env.CLAUDE_CONFIG_DIR; // the default login's folder, when it isn't ~/.claude
 let chain: Promise<unknown> = Promise.resolve();
 
-/** Run something that reads Claude Code's files with this login's folder (undefined: the default login's). */
+const setConfigDir = (dir: string | undefined) => {
+  if (dir) process.env.CLAUDE_CONFIG_DIR = dir;
+  else delete process.env.CLAUDE_CONFIG_DIR;
+};
+
+/**
+ * Run something that reads Claude Code's files with this login's folder (undefined: the default
+ * login's), then put the default back, so nothing started afterwards inherits another login.
+ */
 export function inConfigDir<T>(configDir: string | undefined, fn: () => Promise<T>): Promise<T> {
   const run = chain.then(async () => {
-    if (configDir ?? HOME_DIR) process.env.CLAUDE_CONFIG_DIR = configDir ?? HOME_DIR;
-    else delete process.env.CLAUDE_CONFIG_DIR;
-    return fn();
+    setConfigDir(loginDir(configDir));
+    try {
+      return await fn();
+    } finally {
+      setConfigDir(loginDir());
+    }
   });
   chain = run.catch(() => undefined);
   return run;

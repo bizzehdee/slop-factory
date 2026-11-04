@@ -26,7 +26,7 @@ import { FrameworkMonitor } from './frameworkupdate.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
-import type { AccountEntry, ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, ThinkingLevel, UiCommand } from './protocol.js';
+import type { AccountEntry, AuthState, ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, ThinkingLevel, UiCommand } from './protocol.js';
 
 fixPath();
 
@@ -115,11 +115,23 @@ function newSession(dir: string, mode: PermissionModeName, out: (e: ProjectEvent
 }
 const loadConversation = (id: string, dir: string, login?: string) => (FAKE_AGENT ? Promise.resolve(FakeSession.history(id, login)) : loadHistory(id, dir, login));
 // The tests have no real logins: another account counts as signed in once its sign-in has been "done".
-const checkAuth = (login?: string) => (FAKE_AGENT ? Promise.resolve({ loggedIn: !login || existsSync(path.join(login, '.fake-login')), method: 'fake' }) : authStatus(login));
+const checkAuth = (login?: string): Promise<AuthState> => (FAKE_AGENT ? Promise.resolve({ loggedIn: !login || existsSync(path.join(login, '.fake-login')), method: 'fake' }) : authStatus(login));
 
-/** The logins the app knows, each with whether it's signed in. */
+/**
+ * The logins the app knows, each with whether it's signed in and who as. Who it is comes from the
+ * login itself each time, so signing one in as someone else shows at once rather than when a
+ * session next starts there.
+ */
 async function accountList(): Promise<AccountEntry[]> {
-  return Promise.all(providers.accountList().map(async (a) => ({ ...a, loggedIn: (await checkAuth(providers.account(a.id)?.dir)).loggedIn })));
+  return Promise.all(
+    providers.accountList().map(async (a) => {
+      const state = await checkAuth(providers.account(a.id)?.dir);
+      if (!state.email) return { ...a, loggedIn: state.loggedIn };
+      const info = { email: state.email, organization: state.organization, plan: state.plan };
+      await providers.cacheAccountInfo(a.id, info).catch(() => undefined);
+      return { ...a, ...info, loggedIn: state.loggedIn };
+    }),
+  );
 }
 const emitAccounts = async (error?: string) => emit({ type: 'accounts', list: await accountList(), ...(error ? { error } : {}) });
 const providers = new ProviderStore();

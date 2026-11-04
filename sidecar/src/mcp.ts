@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
+import { loginDir } from './shared.js';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { claudeBinary } from './auth.js';
@@ -12,7 +13,10 @@ const run = promisify(execFile);
 // the project's entry), project scope in the project's .mcp.json. Changes go through "claude mcp",
 // so Claude Code stays the one writing its own files; reading them is enough to list.
 
-const claudeJson = () => (process.env.CLAUDE_CONFIG_DIR ? path.join(process.env.CLAUDE_CONFIG_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json'));
+const claudeJson = () => {
+  const dir = loginDir();
+  return dir ? path.join(dir, '.claude.json') : path.join(os.homedir(), '.claude.json');
+};
 
 async function readJson(file: string): Promise<Record<string, unknown>> {
   try {

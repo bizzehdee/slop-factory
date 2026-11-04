@@ -2,6 +2,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 import type { AuthState } from './protocol.js';
+import { loginEnv } from './shared.js';
 
 const run = promisify(execFile);
 
@@ -25,20 +26,29 @@ export function claudeBinary(): string {
   return 'claude';
 }
 
-/** The environment for the Claude Code binary under one login: its own config folder, or the computer's default. */
-const loginEnv = (configDir?: string) => (configDir ? { ...process.env, CLAUDE_CONFIG_DIR: configDir } : process.env);
+/** What "claude auth status --json" says, including who the login is signed in as. */
+function statusOf(json: Record<string, unknown>): AuthState {
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : undefined);
+  const sub = str(json.subscriptionType);
+  return {
+    loggedIn: !!json.loggedIn,
+    method: str(json.authMethod),
+    provider: str(json.apiProvider),
+    ...(json.loggedIn && str(json.email) ? { email: str(json.email), organization: str(json.orgName), plan: sub && `Claude ${sub[0].toUpperCase()}${sub.slice(1)}` } : {}),
+  };
+}
 
 export async function authStatus(configDir?: string): Promise<AuthState> {
   try {
     const { stdout } = await run(claudeBinary(), ['auth', 'status', '--json'], { timeout: 30_000, windowsHide: true, env: loginEnv(configDir) });
     const json = JSON.parse(stdout);
-    return { loggedIn: !!json.loggedIn, method: json.authMethod, provider: json.apiProvider };
+    return statusOf(json);
   } catch (err) {
     // "auth status" exits non-zero when signed out, still printing its JSON.
     const out = (err as { stdout?: string }).stdout;
     try {
       const json = JSON.parse(out ?? '');
-      return { loggedIn: !!json.loggedIn, method: json.authMethod, provider: json.apiProvider };
+      return statusOf(json);
     } catch {
       return { loggedIn: false, error: `Couldn't check your Claude login: ${err instanceof Error ? err.message : String(err)}` };
     }

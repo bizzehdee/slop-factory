@@ -293,7 +293,13 @@ test('action prompts follow the spec/summary naming and honour overrides', () =>
 
 test('local providers point every model role at the local server and drop cloud credentials', async () => {
   const { sessionSettings, SUBSCRIPTION } = await import('../dist/providers.js');
-  assert.deepEqual(sessionSettings(SUBSCRIPTION), {}, 'subscription keeps the inherited environment');
+  // The subscription keeps the inherited environment, with the login's folder named outright, so a
+  // folder another login's reads left in process.env can't move it.
+  const sub = sessionSettings(SUBSCRIPTION);
+  assert.deepEqual(Object.keys(sub), ['env']);
+  assert.equal(sub.env.PATH, process.env.PATH);
+  assert.equal(sub.env.CLAUDE_CONFIG_DIR, process.env.CLAUDE_CONFIG_DIR);
+  assert.equal(sessionSettings({ ...SUBSCRIPTION, configDir: '/logins/work' }).env.CLAUDE_CONFIG_DIR, '/logins/work');
 
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'sk-ant-oat-should-not-leak';
   process.env.ANTHROPIC_API_KEY = 'sk-ant-api-should-not-leak';
@@ -1364,5 +1370,30 @@ test("an account's folder links to the default login's own config, and leaves it
     assert.deepEqual(await shareConfig(home, home), []);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reading one login's conversations doesn't leave the next session or check on that login", async () => {
+  const { inConfigDir } = await import('../dist/sessions.js');
+  const { loginEnv } = await import('../dist/shared.js');
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  const work = path.join(tmpdir(), 'slop-login-work');
+  let during;
+  await inConfigDir(work, async () => (during = process.env.CLAUDE_CONFIG_DIR));
+  assert.equal(during, work, 'the SDK reads with the login it was asked for');
+  assert.equal(process.env.CLAUDE_CONFIG_DIR, before, 'and the default is back afterwards');
+  await inConfigDir(work, async () => {
+    throw new Error('unreadable');
+  }).catch(() => undefined);
+  assert.equal(process.env.CLAUDE_CONFIG_DIR, before, 'even when the read fails');
+
+  // Each login's environment names its own folder, whatever process.env holds at the time.
+  process.env.CLAUDE_CONFIG_DIR = work;
+  try {
+    assert.equal(loginEnv(undefined).CLAUDE_CONFIG_DIR, before, "the default login's own folder, not the stray one");
+    assert.equal(loginEnv('/elsewhere').CLAUDE_CONFIG_DIR, '/elsewhere');
+  } finally {
+    if (before === undefined) delete process.env.CLAUDE_CONFIG_DIR;
+    else process.env.CLAUDE_CONFIG_DIR = before;
   }
 });
