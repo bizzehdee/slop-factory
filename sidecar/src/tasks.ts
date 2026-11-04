@@ -32,8 +32,8 @@ function indentWidth(ws: string): number {
   return n;
 }
 
-const PHASE_DOC = /(^|\/)task_phase_(\d+)\.md$/i;
-const PHASE_TITLE = /^Phase\s+(\d+)\s*[:\-–]\s*(.*)$/i;
+const PHASE_DOC = /(^|\/)task_phase_(\d+[a-z]?)\.md$/i;
+const PHASE_TITLE = /^Phase\s+(\d+[a-z]?)\s*[:\-–]\s*(.*)$/i;
 const BUG_HEADING = /^###\s+(B\d+)\s*[:\-–]\s*(.*)$/;
 const BUG_FIELD = /^\s*[-*]\s+(Status|Reported)\s*:\s*(.*)$/i;
 const LINK_TARGET = /\]\(([^)\s]+)\)/;
@@ -359,7 +359,7 @@ export class TaskWatcher {
     return [...this.files.values()].sort(
       (a, b) =>
         order[a.kind] - order[b.kind] ||
-        Number(a.phaseNumber ?? 0) - Number(b.phaseNumber ?? 0) ||
+        (a.phaseNumber ?? '').localeCompare(b.phaseNumber ?? '', undefined, { numeric: true }) ||
         a.rel.localeCompare(b.rel),
     );
   }

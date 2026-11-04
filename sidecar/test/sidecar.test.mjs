@@ -106,6 +106,25 @@ test('phase documents get their number and sectioned tasks', () => {
   assert.deepEqual(f.items.map((i) => i.section), ['Tasks', 'Tasks', 'Done when']);
 });
 
+test('a phase with a letter suffix is a phase document, ordered after its number', async () => {
+  const f = parseTaskFile('# Phase 4b: Store rollout\n\n- [ ] T1: Steam\n', 'tasks/task_phase_4b.md');
+  assert.equal(f.kind, 'phase');
+  assert.equal(f.phaseNumber, '4b');
+  const dir = await mkdtemp(path.join(tmpdir(), 'sf-phase-'));
+  await mkdir(path.join(dir, 'tasks'));
+  for (const n of ['5', '4b', '10', '4']) await writeFile(path.join(dir, 'tasks', `task_phase_${n}.md`), `# Phase ${n}: x\n\n- [ ] T1: a\n`);
+  let latest = [];
+  const w = new TaskWatcher(dir, DEFAULT_TASK_CONFIG, (files) => (latest = files));
+  try {
+    w.start();
+    await waitFor(() => latest.length === 4);
+    assert.deepEqual(latest.map((x) => x.phaseNumber), ['4', '4b', '5', '10']);
+  } finally {
+    await w.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 const waitFor = async (fn, ms = 4000) => {
   const start = Date.now();
   for (;;) {

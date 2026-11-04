@@ -21,7 +21,7 @@ function taskPlaces(p: Proj): { value: string; label: string }[] {
   return (index?.phases ?? [])
     .map((row) => ({ row, doc: phaseDocFor(row, phases) }))
     .filter((x) => x.doc)
-    .map(({ row, doc }) => ({ value: doc!.rel, label: `Phase ${row.number}: ${doc!.title.replace(/^Phase\s+\d+\s*[:\-–]\s*/i, '') || row.goal}` }));
+    .map(({ row, doc }) => ({ value: doc!.rel, label: `Phase ${row.number}: ${doc!.title.replace(/^Phase\s+\d+[a-z]?\s*[:\-–]\s*/i, '') || row.goal}` }));
 }
 
 /** Where an open question can go: the plan, its section documents, the phase documents. */

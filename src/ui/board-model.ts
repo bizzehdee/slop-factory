@@ -77,7 +77,7 @@ export function bugItem(p: Proj, file: TaskFile, b: BugEntry): BoardItem {
 
 // Phases (and older TASK.md sections) can be queued and started like tasks.
 
-export const PHASE_PREFIX = /^Phase\s+\d+\s*[:\-–]\s*/i;
+export const PHASE_PREFIX = /^Phase\s+\d+[a-z]?\s*[:\-–]\s*/i;
 
 export function phaseDocFor(row: PhaseRow, phases: TaskFile[]): TaskFile | undefined {
   return (row.doc && phases.find((ph) => ph.rel === row.doc)) || phases.find((ph) => ph.phaseNumber === row.number);
