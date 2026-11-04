@@ -4,6 +4,9 @@
 
 export type PermissionModeName = 'default' | 'acceptEdits' | 'plan' | 'auto' | 'bypassPermissions';
 
+/** How much a model may think before it answers; undefined leaves it to the model. */
+export type ThinkingLevel = 'off' | 'brief' | 'moderate' | 'deep';
+
 /** Where Claude Code sends model requests. Local servers must speak Anthropic's /v1/messages. */
 export interface ProviderConfig {
   id: string;
@@ -13,6 +16,7 @@ export interface ProviderConfig {
   authToken?: string;
   model?: string;
   smallModel?: string; // used for quick background calls; defaults to model
+  thinking?: ThinkingLevel; // the project's choice (not stored here)
   contextTokens?: number; // the window the local server gives the model, asked for when a session starts (not stored)
   configDir?: string; // the account's Claude Code folder, when the project isn't on the default login (not stored)
 }
@@ -124,6 +128,7 @@ export type UiCommand =
   | { type: 'gitCommit'; project: string } // asks the agent to commit what's uncommitted
   | { type: 'setAutoPull'; project: string; on: boolean }
   | { type: 'setModel'; project: string; model: string | null } // null: the provider's default
+  | { type: 'setThinking'; project: string; level: ThinkingLevel | null } // null: leave it to the model
   | { type: 'frameworkCheck'; project: string } // check now, against a freshly updated copy
   | { type: 'frameworkUpgrade'; project: string }
   | { type: 'frameworkDismiss'; project: string } // "not now", until agent-framework changes again
@@ -458,7 +463,9 @@ export type ProjectEvent =
   | { type: 'user'; text: string; action?: { kind: SentAction; key: string }; uuid?: string; attachments?: string[] } // uuid: files can be rewound to this point
   | { type: 'assistantDelta'; msgId: string; index: number; text: string }
   | { type: 'assistantText'; msgId: string; text: string; parent: string | null; agent?: string } // agent: the subagent (its task id) that said it
+  | { type: 'thinkingDelta'; msgId: string; index: number; text: string }
   | { type: 'thinking'; msgId: string; text: string }
+  | { type: 'thinkingLevel'; level: ThinkingLevel | null }
   | { type: 'toolUse'; id: string; name: string; input: unknown; parent: string | null; agent?: string }
   | { type: 'toolResult'; toolUseId: string; isError: boolean; preview: string; agent?: string }
   | { type: 'subagentLog'; agentId: string; events: ProjectEvent[] } // a subagent's transcript, read from disk

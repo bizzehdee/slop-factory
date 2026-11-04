@@ -10,7 +10,7 @@ import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, sc
 import { nextQueued, startFreed, waitingQueued, startQueued, trackLane } from './queue';
 import { applyTheme, onMcpServers, renderSettings, type Theme } from './settings';
 import { active, editorList, setAccountList, load, newProject, projects, providerList, receivePrefs, saveOpenProjects, send, setEditorList, setProviderList } from './state';
-import { assistantDelta, assistantFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
+import { assistantDelta, assistantFinal, thinkingDelta, thinkingFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
 import { refreshWorktrees, renderWorktreeView, renderWorktrees } from './worktrees';
 import { onSubagentLog, recordAgentEvent, renderSubagentView } from './subagents';
 import { notify } from './notify';
@@ -202,6 +202,7 @@ export function onEvent(e: SidecarEvent): void {
     case 'provider':
       p.providerId = e.providerId;
       p.session = undefined;
+      p.gauges = undefined;
       p.lastTurn = undefined;
       if (isActive) {
         renderComposer();
@@ -247,7 +248,13 @@ export function onEvent(e: SidecarEvent): void {
       askQuestions(p, e.id, e.questions);
       notify(p, 'needsYou', e.questions[0]?.question);
       break;
+    case 'thinkingDelta':
+      return thinkingDelta(p, e.msgId, e.index, e.text);
     case 'thinking':
+      return thinkingFinal(p, e.msgId, e.text);
+    case 'thinkingLevel':
+      p.thinking = e.level;
+      if (isActive) renderComposer();
       return;
     case 'toolUse':
       recordAgentEvent(p, e);

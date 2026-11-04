@@ -312,6 +312,36 @@ test('local providers point every model role at the local server and drop cloud 
   assert.ok(env.PATH, 'keeps PATH so tools still run');
 });
 
+test('a local model\'s thinking level is kept per project, with a token budget or an effort level', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfg-'));
+  process.env.SLOP_FACTORY_CONFIG_DIR = dir;
+  try {
+    const { ProviderStore, THINKING_BUDGETS, THINKING_EFFORT, isThinkingLevel } = await import('../dist/providers.js');
+    const store = new ProviderStore();
+    await store.load();
+    const local = await store.upsert({ id: '', name: '', kind: 'ollama', baseUrl: 'http://localhost:11434', model: 'qwen3' });
+    await store.setForProject('/proj/a', local.id);
+    assert.equal(store.forProject('/proj/a').thinking, undefined);
+    await store.setThinking('/proj/a', 'brief');
+    const again = new ProviderStore();
+    await again.load();
+    assert.equal(again.forProject('/proj/a').thinking, 'brief');
+    assert.equal(THINKING_BUDGETS.brief, 2048);
+    assert.equal(THINKING_BUDGETS.off, 0);
+    await again.setForProject('/proj/a', 'subscription');
+    assert.equal(again.forProject('/proj/a').thinking, 'brief', 'the choice follows the project to the subscription');
+    assert.equal(THINKING_EFFORT.brief, 'low');
+    assert.equal(THINKING_EFFORT.off, undefined);
+    await again.setThinking('/proj/a', null);
+    assert.equal(again.forProject('/proj/a').thinking, undefined);
+    assert.equal(isThinkingLevel('deep'), true);
+    assert.equal(isThinkingLevel('toString'), false);
+  } finally {
+    delete process.env.SLOP_FACTORY_CONFIG_DIR;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('provider store normalises addresses, remembers per-project choice, and resets on delete', async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'desk-cfg-'));
   process.env.SLOP_FACTORY_CONFIG_DIR = dir;

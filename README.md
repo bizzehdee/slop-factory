@@ -55,6 +55,23 @@ versions further down, and the switch applies from the next reply, mid-conversat
 model it lists the models the server has; switching restarts the agent on the new one, carrying the
 conversation on, so the context window is the new model's. Each project remembers its choice.
 
+### Thinking
+
+The **Thinking** picker beside the model picker sets how much the model may think before it
+answers: **off**, **brief**, **moderate**, **deep**, or the model's own choice. Some models think for
+tens of thousands of tokens, or go in circles, when a couple of thousand would do.
+
+- On a local model the levels are token budgets: 2k, 8k and 32k. How closely the server keeps to
+  the budget depends on the server.
+- On your subscription they are effort levels: low, medium and high. Models without effort
+  settings ignore them.
+
+The level applies from the next reply, with no restart, and each project remembers its choice.
+
+**Show thinking** beside it puts the model's thinking in the conversation as it happens, so you can
+see whether it is going in circles. Press it again to hide it. It is off by default and applies to
+every project.
+
 ## The delivery board
 
 The left side shows the project's plan, read from its files and updated the moment they change,
@@ -284,7 +301,7 @@ The Session panel, at the foot of the right sidebar, shows gauges and the model 
 limits you've used and when each resets, and how full the conversation's **context** is. On a
 local model only the context applies, and its size comes from the server itself (llama.cpp or
 Ollama), which the agent is told too, so it summarises older messages before the server runs out of
-room.
+room. The gauge is there as soon as the project is on a local model, before the first message.
 
 **Usage** in the project menu shows what the project has used: cost, tokens, turns and time, today
 and in all, the last 14 days, and each model. On a local model it counts tokens only.

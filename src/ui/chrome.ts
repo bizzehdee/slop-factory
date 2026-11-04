@@ -232,6 +232,17 @@ export function renderComposer(): void {
         ? 'Every action runs without asking (--dangerously-skip-permissions). Auto mode is the safer hands-off choice.'
         : 'How the agent asks before acting';
   renderModelPicker(p);
+  const thinking = $<HTMLSelectElement>('thinking-level');
+  // A local model is given a budget of tokens; the subscription's models an effort level.
+  const hints: Record<string, string> = local ? { brief: ' (2k tokens)', moderate: ' (8k tokens)', deep: ' (32k tokens)' } : { brief: ' (low effort)', moderate: ' (medium effort)', deep: ' (high effort)' };
+  for (const o of thinking.options) o.textContent = o.textContent!.replace(/ \(.*\)$/, '') + (hints[o.value] ?? '');
+  thinking.disabled = !p;
+  thinking.value = p?.thinking ?? '';
+  const showThinking = load('slop-factory:show-thinking') === '1';
+  $('transcripts').classList.toggle('show-thinking', showThinking);
+  const showButton = $<HTMLButtonElement>('show-thinking');
+  showButton.disabled = !p;
+  showButton.setAttribute('aria-pressed', String(showThinking));
   $<HTMLButtonElement>('new-conversation').disabled = !p;
   const prov = $<HTMLSelectElement>('provider');
   prov.disabled = !p;

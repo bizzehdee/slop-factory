@@ -568,6 +568,25 @@ textarea {
   line-height: 1.65;
   font-optical-sizing: auto;
 }
+.msg.thinking {
+  display: none;
+  color: var(--muted);
+  font-size: var(--step--1);
+  border-left: 2px solid var(--line);
+  padding-left: 10px;
+}
+.show-thinking .msg.thinking {
+  display: block;
+}
+.thinking-label {
+  font-weight: 600;
+}
+.thinking-text {
+  max-height: 16rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  font-style: italic;
+}
 .msg.assistant.streaming {
   white-space: pre-wrap;
 }
@@ -1065,6 +1084,11 @@ textarea {
   color: var(--text);
   border-color: var(--faint);
 }
+.mode-button[aria-pressed='true'] {
+  color: var(--text);
+  border-color: var(--faint);
+  background: var(--raised);
+}
 .mode-button:disabled {
   cursor: default;
   opacity: 0.6;
@@ -1313,6 +1337,14 @@ textarea {
 
 /* ---------- projects ---------- */
 
+/* The buttons and the project list stay put while the rest of the sidebar scrolls under them. */
+.projects {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  flex: none;
+  background: var(--sidebar);
+}
 .projects .pane-head {
   padding-top: 14px;
   padding-bottom: 4px;
@@ -1322,6 +1354,8 @@ textarea {
   list-style: none;
   margin: 0;
   padding: 0 10px 6px;
+  max-height: 40vh;
+  overflow-y: auto;
 }
 .no-projects {
   padding: 4px 10px;

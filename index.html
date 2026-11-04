@@ -90,6 +90,17 @@
                 <span class="visually-hidden">Model</span>
                 <select id="model-picker" title="Which model the agent uses" disabled></select>
               </label>
+              <label class="mode">
+                <span class="visually-hidden">Thinking</span>
+                <select id="thinking-level" title="How much the model may think before it answers" disabled>
+                  <option value="">Thinking: model’s choice</option>
+                  <option value="off">Thinking: off</option>
+                  <option value="brief">Thinking: brief</option>
+                  <option value="moderate">Thinking: moderate</option>
+                  <option value="deep">Thinking: deep</option>
+                </select>
+              </label>
+              <button id="show-thinking" type="button" class="mode-button" aria-pressed="false" title="Show what the model is thinking in the conversation, as it thinks">Show thinking</button>
               <button id="new-conversation" type="button" class="mode-button" title="Start the conversation afresh: the agent forgets this one" disabled>New conversation</button>
               <span class="composer-hint">/ for commands · Shift+Enter for a new line</span>
               <button id="stop" type="button" class="round-button stop" title="Stop the agent" aria-label="Stop the agent" hidden>

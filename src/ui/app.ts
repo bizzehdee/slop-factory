@@ -1,5 +1,5 @@
 import { createBridge } from '../bridge';
-import type { PermissionModeName } from '../../sidecar/src/protocol';
+import type { PermissionModeName, ThinkingLevel } from '../../sidecar/src/protocol';
 import { activate, newConversation, projectMenu, renderAll, renderComposer } from './chrome';
 import { closeDocs } from './docs';
 import { $ } from './dom';
@@ -9,7 +9,7 @@ import { MenuItem, closeMenu, menuAnchor, menuEl, openMenu } from './menus';
 import { newProjectDialog, wireNewProjectDialog } from './newproject';
 import { wireProviderDialog } from './providers';
 import { wireSettings } from './settings';
-import { active, bridge, load, projects, send, setBridge } from './state';
+import { active, bridge, load, projects, send, setBridge, store } from './state';
 import { wireCapture } from './capture';
 import { slashKey, takeAttachments, wireComposer } from './composer';
 import { openPalette, wirePalette } from './palette';
@@ -113,6 +113,14 @@ export async function init(): Promise<void> {
   $('model-picker').addEventListener('change', (ev) => {
     if (!active) return;
     send({ type: 'setModel', project: active.dir, model: (ev.target as HTMLSelectElement).value });
+  });
+  $('thinking-level').addEventListener('change', (ev) => {
+    if (!active) return;
+    send({ type: 'setThinking', project: active.dir, level: ((ev.target as HTMLSelectElement).value || null) as ThinkingLevel | null });
+  });
+  $('show-thinking').addEventListener('click', () => {
+    store('slop-factory:show-thinking', load('slop-factory:show-thinking') === '1' ? null : '1');
+    renderComposer();
   });
   $('new-conversation').addEventListener('click', () => active && newConversation(active));
   $('docs-close').addEventListener('click', closeDocs);

@@ -6,7 +6,7 @@ import { messageContent } from './attachments.js';
 import type { ModelTotals } from './usage.js';
 import { serverContextWindow } from './context.js';
 import { configDir } from './names.js';
-import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig, SessionEntry } from './protocol.js';
+import type { AskedQuestion, Attachment, SentAction, PermissionModeName, ProjectEvent, ProviderConfig, SessionEntry, ThinkingLevel } from './protocol.js';
 import { SUBSCRIPTION } from './providers.js';
 import { ProcessTracker } from './processes.js';
 
@@ -129,6 +129,10 @@ export class FakeSession {
     ];
   }
 
+  async setThinking(level: ThinkingLevel | undefined): Promise<void> {
+    this.provider = { ...this.provider, thinking: level };
+  }
+
   async setModel(model: string | undefined): Promise<void> {
     this.model = model ?? this.provider.model ?? 'fake-model';
     this.emitSession();
@@ -141,6 +145,19 @@ export class FakeSession {
     this.onSession?.(this.sessionId);
     if (this.provider.kind === 'subscription') this.onAccount?.({ email: `${path.basename(this.provider.configDir ?? 'default')}@example.test`, plan: 'max' });
     this.emitSession();
+    const tokens = this.resume ? 18_000 : 0;
+    if (this.provider.kind === 'subscription') this.emitSubscriptionGauges(tokens);
+    else void this.emitLocalContext(tokens);
+  }
+
+  private emitSubscriptionGauges(tokens: number): void {
+    const hour = 3_600_000;
+    this.emit({ type: 'gauges', gauges: { fiveHour: { used: 0.42, resetsAt: Date.now() + 2 * hour }, week: { used: 0.86, resetsAt: Date.now() + 75 * hour }, context: { tokens, max: 200_000 } } });
+  }
+
+  private async emitLocalContext(tokens: number): Promise<void> {
+    const max = (await serverContextWindow(this.provider).catch(() => undefined)) ?? this.provider.contextTokens;
+    this.emit({ type: 'gauges', gauges: { context: { tokens, max, fromServer: !!max } } });
   }
 
   private emitSession(): void {
@@ -396,6 +413,12 @@ export class FakeSession {
         await this.subagent('Work in a worktree', lower.includes('slow'));
         return this.reply('The subagent has finished.');
       }
+      if (lower.includes('ponder') && this.provider.thinking !== 'off') {
+        const msgId = `msg_${randomUUID()}`;
+        const thought = `Hmm, let me think about "${text.split('\n')[0].slice(0, 40)}" (thinking: ${this.provider.thinking ?? 'default'}). Wait, no.`;
+        this.emit({ type: 'thinkingDelta', msgId, index: 0, text: thought.slice(0, 12) });
+        this.emit({ type: 'thinking', msgId, text: thought });
+      }
       if (lower.includes('edit')) {
         const before = existsSync(path.join(this.cwd, 'notes.txt')) ? readFileSync(path.join(this.cwd, 'notes.txt'), 'utf8') : '';
         const line = `${text.split('\n')[0]}\n`;
@@ -419,11 +442,9 @@ export class FakeSession {
     // Gauges as the real agent reports them: the context grows with each turn.
     const tokens = 18_000 + 6_000 * (this.totals.out / 20);
     if (this.provider.kind === 'subscription') {
-      const hour = 3_600_000;
-      this.emit({ type: 'gauges', gauges: { fiveHour: { used: 0.42, resetsAt: Date.now() + 2 * hour }, week: { used: 0.86, resetsAt: Date.now() + 75 * hour }, context: { tokens, max: 200_000 } } });
+      this.emitSubscriptionGauges(tokens);
     } else {
-      const max = (await serverContextWindow(this.provider).catch(() => undefined)) ?? this.provider.contextTokens;
-      this.emit({ type: 'gauges', gauges: { context: { tokens, max, fromServer: !!max } } });
+      await this.emitLocalContext(tokens);
     }
     this.settleWaiters(stopped);
     if (!this.busy) this.emit({ type: 'busy', busy: false });

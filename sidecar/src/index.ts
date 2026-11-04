@@ -13,7 +13,7 @@ import { loadHistory } from './history.js';
 import { TaskWatcher, loadTaskConfig } from './tasks.js';
 import { scanFramework } from './framework.js';
 import { DEFAULT_PROMPTS, Priorities, planPrompt, promptFor, workstreamsPrompt, type DeskPrompts } from './actions.js';
-import { DEFAULT_ACCOUNT, ProviderStore, probeModels } from './providers.js';
+import { DEFAULT_ACCOUNT, ProviderStore, isThinkingLevel, probeModels } from './providers.js';
 import { createProject } from './newproject.js';
 import { installedEditors, openInEditor } from './editors.js';
 import { authStatus, LoginFlow } from './auth.js';
@@ -26,7 +26,7 @@ import { FrameworkMonitor } from './frameworkupdate.js';
 import { serverContextWindow } from './context.js';
 import { fixPath } from './shellpath.js';
 import { appVersion, loadProjectSettings, migrateConfigDir, readProjectSettings } from './names.js';
-import type { AccountEntry, ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, UiCommand } from './protocol.js';
+import type { AccountEntry, ModelOption, LaneRun, PermissionModeName, ProjectEvent, ProviderConfig, SentAction, SidecarEvent, ThinkingLevel, UiCommand } from './protocol.js';
 
 fixPath();
 
@@ -59,9 +59,9 @@ for (const name of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SESSION
 // Events that make up the transcript are kept so a reloaded window can rebuild it.
 // State events (tasks, processes, ...) only need their latest value.
 const TRANSCRIPT = new Set<ProjectEvent['type']>([
-  'user', 'assistantText', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
+  'user', 'assistantText', 'thinking', 'toolUse', 'toolResult', 'permissionRequest', 'askQuestions', 'permissionResolved', 'turnEnd', 'notice',
 ]);
-const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'models', 'account', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
+const LATEST = new Set<ProjectEvent['type']>(['session', 'commands', 'usage', 'planLimit', 'gauges', 'models', 'thinkingLevel', 'account', 'git', 'framework', 'taskStart', 'busy', 'processes', 'tasks', 'priorities', 'worktrees']);
 const MAX_TRANSCRIPT = 3000;
 
 interface Project {
@@ -289,6 +289,7 @@ async function sendModels(p: Project): Promise<void> {
   const session = p.session;
   const provider = session.provider;
   const local = provider.kind !== 'subscription';
+  p.out({ type: 'thinkingLevel', level: provider.thinking ?? null });
   try {
     let models: ModelOption[];
     if (local) {
@@ -327,6 +328,14 @@ async function switchModel(p: Project, model: string | null): Promise<void> {
   void sendModels(p);
   const label = (p.latest.get('models') as Extract<ProjectEvent, { type: 'models' }> | undefined)?.models.find((m) => m.value === (chosen ?? 'default'))?.label ?? value ?? 'the default model';
   p.out({ type: 'notice', level: 'info', text: `Switched to ${label} for the replies from here on.` });
+}
+
+/** How much the model may think: changes the replies from here on, with no restart. */
+async function switchThinking(p: Project, level: ThinkingLevel | null): Promise<void> {
+  await providers.setThinking(p.dir, level);
+  p.session.provider = { ...p.session.provider, thinking: level ?? undefined };
+  await p.session.setThinking(level ?? undefined);
+  p.out({ type: 'thinkingLevel', level });
 }
 
 async function restartSession(p: Project, fresh: boolean, note?: string): Promise<void> {
@@ -657,6 +666,9 @@ async function handle(cmd: UiCommand): Promise<void> {
       return need(cmd.project).git.init().catch(failed("Couldn't make this a git repository"));
     case 'setModel':
       return switchModel(need(cmd.project), cmd.model);
+    case 'setThinking':
+      if (cmd.level !== null && !isThinkingLevel(cmd.level)) return;
+      return switchThinking(need(cmd.project), cmd.level);
     case 'frameworkCheck':
       return need(cmd.project).framework.check(true);
     case 'frameworkUpgrade':

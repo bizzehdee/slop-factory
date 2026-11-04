@@ -1,5 +1,5 @@
 import { type Bridge } from '../bridge';
-import type { AccountEntry, SessionEntry, AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ModelOption, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
+import type { AccountEntry, SessionEntry, AskedQuestion, Attachment, CommandInfo, Gauges, GitInfo, FrameworkStatus, ModelOption, ProjectUsage, TaskStart, EditorInfo, FrameworkInfo, OpenQuestion, PermissionModeName, ProcessInfo, ProjectEvent, ProviderConfig, SessionInfo, ThinkingLevel, TaskFile, UiCommand, WorktreeInfo, LaneRun } from '../../sidecar/src/protocol';
 import { $, h } from './dom';
 import { ChatQuestion } from './questions';
 import type { FileEdit } from './changes';
@@ -60,6 +60,7 @@ export interface Proj {
   sessions?: { list: SessionEntry[]; error?: string }; // its conversations, when the list has been asked for
   frameworkStatus?: FrameworkStatus; // whether its agent-framework is the current one
   gauges?: Gauges;
+  thinking?: ThinkingLevel | null; // how much a local model may think; null: its own choice
   taskStart?: TaskStart | null; // this project's own choice of where tasks start; null: the default
   agentLogs: Map<string, Extract<ProjectEvent, { type: 'assistantText' | 'toolUse' | 'toolResult' }>[]>; // each subagent's own messages, by its task id
 }
@@ -84,7 +85,7 @@ export const setEditorList = (list: EditorInfo[]) => (editorList = list);
 
 // Settings the sidecar keeps in ~/.slop-factory/config.json, as a desktop webview needn't keep its
 // own storage. The window keeps a copy too, only so the theme is right before the sidecar answers.
-const SHARED = new Set(['slop-factory:theme', 'slop-factory:notifications', 'slop-factory:new-project-parent', 'slop-factory:task-start']);
+const SHARED = new Set(['slop-factory:theme', 'slop-factory:notifications', 'slop-factory:new-project-parent', 'slop-factory:task-start', 'slop-factory:show-thinking']);
 const prefKey = (key: string) => key.replace(/^slop-factory:/, '');
 let prefs: Record<string, string> | undefined; // the sidecar's settings, once it has said
 

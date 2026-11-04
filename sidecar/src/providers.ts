@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AccountEntry, PermissionModeName, ProviderConfig, TaskStart } from './protocol.js';
+import type { AccountEntry, PermissionModeName, ProviderConfig, TaskStart, ThinkingLevel } from './protocol.js';
 
 // Where model providers live. Each project remembers which one it uses.
 // Claude Code talks to any server that speaks Anthropic's Messages API (/v1/messages),
@@ -28,6 +28,7 @@ interface DeskState {
   prefs?: Record<string, string>; // the window's settings: theme, notifications, where new projects go
   projectTaskStart?: Record<string, TaskStart>; // projects whose tasks start differently from the default
   projectModel?: Record<string, { provider: string; model: string }>; // the model each project picked, on the provider it was picked for
+  projectThinking?: Record<string, ThinkingLevel>; // how much each project lets its model think
   frameworkDismissed?: Record<string, string>; // the agent-framework version each project said "not now" to
   accounts?: StoredAccount[]; // Claude logins besides the one on this computer
   defaultAccount?: string;
@@ -71,6 +72,7 @@ export class ProviderStore {
         activeProject: typeof raw.activeProject === 'string' ? raw.activeProject : undefined,
         projectTaskStart: raw.projectTaskStart && typeof raw.projectTaskStart === 'object' ? Object.fromEntries(Object.entries(raw.projectTaskStart).filter(([, v]) => TASK_STARTS.includes(v as TaskStart))) as Record<string, TaskStart> : undefined,
         projectModel: raw.projectModel && typeof raw.projectModel === 'object' ? Object.fromEntries(Object.entries(raw.projectModel).filter(([, v]) => !!v && typeof (v as { provider?: unknown }).provider === 'string' && typeof (v as { model?: unknown }).model === 'string')) as Record<string, { provider: string; model: string }> : undefined,
+        projectThinking: raw.projectThinking && typeof raw.projectThinking === 'object' ? (Object.fromEntries(Object.entries(raw.projectThinking).filter(([, v]) => isThinkingLevel(v))) as Record<string, ThinkingLevel>) : undefined,
         frameworkDismissed: raw.frameworkDismissed && typeof raw.frameworkDismissed === 'object' ? Object.fromEntries(Object.entries(raw.frameworkDismissed).filter(([, v]) => typeof v === 'string')) as Record<string, string> : undefined,
         accounts: Array.isArray(raw.accounts) ? raw.accounts.filter((a: StoredAccount) => !!a && typeof a.id === 'string' && typeof a.name === 'string' && typeof a.dir === 'string') : undefined,
         defaultAccount: typeof raw.defaultAccount === 'string' ? raw.defaultAccount : undefined,
@@ -96,7 +98,8 @@ export class ProviderStore {
     const p = this.get(this.state.projectProvider[dir]);
     const model = this.modelFor(dir, p.id);
     const configDir = this.accountFor(dir).dir;
-    return { ...p, ...(model ? { model } : {}), ...(configDir ? { configDir } : {}) };
+    const thinking = this.thinkingFor(dir);
+    return { ...p, ...(model ? { model } : {}), ...(configDir ? { configDir } : {}), ...(thinking ? { thinking } : {}) };
   }
 
   // ---------- accounts ----------
@@ -289,6 +292,18 @@ export class ProviderStore {
     return m?.provider === providerId ? m.model : undefined;
   }
 
+  thinkingFor(dir: string): ThinkingLevel | undefined {
+    return this.state.projectThinking?.[dir];
+  }
+
+  async setThinking(dir: string, level: ThinkingLevel | null): Promise<void> {
+    const map = { ...(this.state.projectThinking ?? {}) };
+    if (level) map[dir] = level;
+    else delete map[dir];
+    this.state.projectThinking = map;
+    await this.save();
+  }
+
   async setModel(dir: string, providerId: string, model: string | null): Promise<void> {
     const map = { ...(this.state.projectModel ?? {}) };
     if (model) map[dir] = { provider: providerId, model };
@@ -391,6 +406,12 @@ function isProvider(x: unknown): x is ProviderConfig {
   const p = x as ProviderConfig;
   return !!p && typeof p.id === 'string' && typeof p.kind === 'string' && p.kind !== 'subscription';
 }
+
+/** Tokens a local model may spend thinking at each level; off is none. */
+export const THINKING_BUDGETS: Record<ThinkingLevel, number> = { off: 0, brief: 2048, moderate: 8192, deep: 32768 };
+/** The subscription's models take an effort level rather than a token budget; off turns thinking off. */
+export const THINKING_EFFORT: Record<ThinkingLevel, 'low' | 'medium' | 'high' | undefined> = { off: undefined, brief: 'low', moderate: 'medium', deep: 'high' };
+export const isThinkingLevel = (v: unknown): v is ThinkingLevel => typeof v === 'string' && Object.hasOwn(THINKING_BUDGETS, v);
 
 /**
  * The environment and model for a Claude Code session on this provider.

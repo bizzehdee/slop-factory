@@ -48,6 +48,29 @@ export function assistantFinal(p: Proj, msgId: string, text: string, parent: str
   stickToBottom(p, () => (el.innerHTML = md(text)));
 }
 
+function thinkingEntry(p: Proj, key: string): HTMLElement {
+  let el = p.liveText.get(key);
+  if (!el) {
+    el = h('div', { class: 'msg thinking streaming' }, h('span', { class: 'thinking-label' }, 'Thinking'), h('div', { class: 'thinking-text' }));
+    p.liveText.set(key, el);
+    appendEntry(p, el);
+  }
+  return el;
+}
+
+export function thinkingDelta(p: Proj, msgId: string, index: number, text: string): void {
+  const body = thinkingEntry(p, `think:${msgId}:${index}`).querySelector<HTMLElement>('.thinking-text')!;
+  stickToBottom(p, () => (body.textContent += text));
+}
+
+export function thinkingFinal(p: Proj, msgId: string, text: string): void {
+  const key = [...p.liveText.keys()].find((k) => k.startsWith(`think:${msgId}:`)) ?? `think:${msgId}:0`;
+  const el = thinkingEntry(p, key);
+  p.liveText.delete(key);
+  el.classList.remove('streaming');
+  stickToBottom(p, () => (el.querySelector<HTMLElement>('.thinking-text')!.textContent = text));
+}
+
 export function relPath(p: Proj, file: string): string {
   const root = p.dir.replace(/[\\/]+$/, '');
   for (const sep of ['/', '\\']) if (file.startsWith(root + sep)) return file.slice(root.length + 1);

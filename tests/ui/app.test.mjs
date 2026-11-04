@@ -465,6 +465,14 @@ test('Ctrl+K finds tasks, questions and messages, and goes to them', async () =>
   assert.deepEqual(page.errors, []);
 });
 
+test('the gauges are there in a new conversation, before the first message', async () => {
+  const page = await app.open(await app.project());
+  await page.waitForSelector('#gauges .gauge[aria-label="5-hour limit"]');
+  await page.waitForSelector('#gauges .gauge[aria-label="Weekly limit"]');
+  assert.match(await page.textContent('#gauges .gauge[aria-label="Context"]'), /0 \/ 200k/);
+  assert.deepEqual(page.errors, []);
+});
+
 test("each project's usage is counted and shown, with the plan's limit", async () => {
   const page = await app.open(await app.project());
   for (const text of ['First thing', 'Second thing, near the limit']) {
@@ -628,12 +636,28 @@ test('git: initialise, publish, fetch and pull, push, and commit through the age
   assert.deepEqual(page.errors, []);
 });
 
+test('the subscription has a thinking level too, as an effort, kept for the project', async () => {
+  const page = await app.open(await app.project());
+  await page.waitForSelector('#thinking-level:not([disabled])');
+  assert.deepEqual(await page.$$eval('#thinking-level option', (els) => els.map((e) => e.textContent)), [
+    'Thinking: model’s choice',
+    'Thinking: off',
+    'Thinking: brief (low effort)',
+    'Thinking: moderate (medium effort)',
+    'Thinking: deep (high effort)',
+  ]);
+  await page.selectOption('#thinking-level', 'moderate');
+  await page.reload();
+  await page.waitForSelector('#thinking-level:not([disabled])');
+  await page.waitForFunction(() => document.querySelector('#thinking-level').value === 'moderate');
+});
+
 test("a local model's context gauge is sized by its server, with no subscription limits", async () => {
   const http = await import('node:http');
   // A stand-in llama.cpp server: its models, and the context each slot gets.
   const server = http.createServer((req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen3-coder' }, { id: 'gemma-4' }] }));
+    if (req.url === '/v1/models') return res.end(JSON.stringify({ data: [{ id: 'qwen3-coder' }, { id: 'gemma-4' }, { id: 'a-very-long-model-name-with-quantisation-suffixes-q4_k_xl-instruct-2507' }] }));
     if (req.url === '/props') return res.end(JSON.stringify({ default_generation_settings: { n_ctx: 32768 } }));
     res.statusCode = 404;
     res.end('{}');
@@ -650,19 +674,48 @@ test("a local model's context gauge is sized by its server, with no subscription
     await page.click('#provider-save');
     await page.waitForSelector('.notice:has-text("Switched to")');
     await page.keyboard.press('Escape');
+    await page.waitForSelector('#gauges .gauge[aria-label="Context"]');
+    assert.match(await page.textContent('#gauges'), /0 \/ 33k/, 'the gauge is there before the first message');
     await page.fill('#prompt', 'Hello');
     await page.keyboard.press('Enter');
-    await page.waitForSelector('#gauges .gauge[aria-label="Context"]');
+    await page.waitForSelector('#gauges .gauge[aria-label="Context"]:has-text("24k")');
     assert.match(await page.textContent('#gauges'), /24k \/ 33k.*Window size from llama\.cpp/);
     assert.equal(await page.locator('#gauges .gauge').count(), 1, 'only the context: a local model has no subscription limits');
     // The picker lists the server's models, and switching restarts the agent on the other one.
     await idle(page);
-    assert.deepEqual(await page.$$eval('#model-picker option', (els) => els.map((e) => e.value)), ['gemma-4', 'qwen3-coder']);
+    assert.deepEqual(await page.$$eval('#model-picker option', (els) => els.map((e) => e.value)), ['a-very-long-model-name-with-quantisation-suffixes-q4_k_xl-instruct-2507', 'gemma-4', 'qwen3-coder']);
     assert.equal(await page.inputValue('#model-picker'), 'qwen3-coder');
     await page.selectOption('#model-picker', 'gemma-4');
     await page.waitForSelector('.notice:has-text("Switched to gemma-4. The conversation carries on.")');
     await page.waitForFunction(() => document.querySelector('#model-picker').value === 'gemma-4');
     await page.waitForSelector('#session dd:has-text("gemma-4")');
+    // A long model name is cut short rather than pushing the controls out of the message box.
+    const box = await page.evaluate(() => {
+      const row = document.querySelector('.composer-row').getBoundingClientRect();
+      const sel = document.querySelector('#model-picker').getBoundingClientRect();
+      return { row: row.right, sel: sel.right, width: sel.width };
+    });
+    assert.ok(box.sel <= box.row, 'the model picker stays inside the composer');
+    assert.ok(box.width <= 14 * 16 + 1, 'and is no wider than its cap');
+    // How much it may think is set per project, and its thinking can be shown or hidden.
+    assert.equal(await page.isVisible('#thinking-level'), true);
+    await page.selectOption('#thinking-level', 'brief');
+    await page.waitForFunction(() => document.querySelector('#thinking-level').value === 'brief');
+    await page.fill('#prompt', 'Ponder this');
+    await page.keyboard.press('Enter');
+    await idle(page);
+    await page.waitForSelector('.msg.thinking', { state: 'attached' });
+    assert.equal(await page.isVisible('.msg.thinking'), false, 'hidden until asked for');
+    await page.click('#show-thinking');
+    assert.equal(await page.getAttribute('#show-thinking', 'aria-pressed'), 'true');
+    assert.match(await page.textContent('.msg.thinking'), /thinking: brief/);
+    await page.click('#show-thinking');
+    assert.equal(await page.isVisible('.msg.thinking'), false);
+    await page.selectOption('#thinking-level', 'off');
+    await page.fill('#prompt', 'Ponder again');
+    await page.keyboard.press('Enter');
+    await idle(page);
+    assert.equal(await page.locator('.msg.thinking').count(), 1, 'nothing new when thinking is off');
   } finally {
     server.close();
   }

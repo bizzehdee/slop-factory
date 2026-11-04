@@ -6,10 +6,11 @@ import {
   type ModelInfo,
   type PermissionResult,
   type PermissionUpdate,
+  type ThinkingConfig,
 } from '@anthropic-ai/claude-agent-sdk';
 import { randomUUID } from 'node:crypto';
-import type { AskedQuestion, Attachment, Gauge, Gauges, SentAction, PermissionModeName, ProjectEvent, ProviderConfig } from './protocol.js';
-import { sessionSettings, SUBSCRIPTION } from './providers.js';
+import type { AskedQuestion, Attachment, Gauge, Gauges, SentAction, PermissionModeName, ProjectEvent, ProviderConfig, ThinkingLevel } from './protocol.js';
+import { sessionSettings, SUBSCRIPTION, THINKING_BUDGETS, THINKING_EFFORT } from './providers.js';
 import { ProcessTracker } from './processes.js';
 import { messagesToEvents } from './history.js';
 import { readSubagent } from './sessions.js';
@@ -118,6 +119,22 @@ export class AgentSession {
     await this.q?.setModel(model);
   }
 
+  /** How much the model may think from here on; undefined leaves it to the model. */
+  async setThinking(level: ThinkingLevel | undefined): Promise<void> {
+    if (this.provider.kind !== 'subscription') return this.q?.setMaxThinkingTokens(level ? THINKING_BUDGETS[level] : null);
+    await this.q?.setMaxThinkingTokens(level === 'off' ? 0 : null);
+    await this.q?.applyFlagSettings({ effortLevel: level ? (THINKING_EFFORT[level] ?? null) : null });
+  }
+
+  /** A local model gets a token budget; the subscription's an effort level. Off is off for both. */
+  private thinkingOptions(): { thinking?: ThinkingConfig; effort?: 'low' | 'medium' | 'high' } {
+    const level = this.provider.thinking;
+    if (!level) return {};
+    if (level === 'off') return { thinking: { type: 'disabled' } };
+    if (this.provider.kind === 'subscription') return { effort: THINKING_EFFORT[level], thinking: { type: 'adaptive', display: 'summarized' } };
+    return { thinking: { type: 'enabled', budgetTokens: THINKING_BUDGETS[level], display: 'summarized' } };
+  }
+
   start(): void {
     const { env, model } = sessionSettings(this.provider);
     this.q = query({
@@ -130,6 +147,8 @@ export class AgentSession {
         settingSources: ['user', 'project', 'local'],
         systemPrompt: { type: 'preset', preset: 'claude_code' },
         permissionMode: this.permissionMode,
+        // Without this, Claude Code refuses to switch into bypassPermissions after the session has started.
+        allowDangerouslySkipPermissions: true,
         includePartialMessages: true,
         // Subagents' own text too, tagged with the subagent, so the window can show each one's transcript.
         forwardSubagentText: true,
@@ -140,6 +159,7 @@ export class AgentSession {
         stderr: (data) => process.stderr.write(`[claude] ${data}`),
         ...(env ? { env } : {}),
         ...(model ? { model } : {}),
+        ...this.thinkingOptions(),
         ...(this.resume ? { resume: this.resume } : {}),
       },
     });
@@ -147,8 +167,6 @@ export class AgentSession {
   }
 
   private holds = 0; // a compaction before a task: the session stays busy until the task is sent
-        // Without this, Claude Code refuses to switch into bypassPermissions after the session has started.
-        allowDangerouslySkipPermissions: true,
   private idleWaiters: ((stopped: boolean) => void)[] = [];
   private sentAny = false;
 
@@ -296,10 +314,13 @@ export class AgentSession {
 
       case 'stream_event': {
         if (msg.parent_tool_use_id) return; // don't stream subagent chatter into the main transcript
-        const ev = msg.event as { type: string; index?: number; message?: { id: string }; delta?: { type: string; text?: string } };
+        const ev = msg.event as { type: string; index?: number; message?: { id: string }; delta?: { type: string; text?: string; thinking?: string } };
         if (ev.type === 'message_start' && ev.message) this.currentMsgId = ev.message.id;
         if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta' && ev.delta.text) {
           this.emit({ type: 'assistantDelta', msgId: this.currentMsgId, index: ev.index ?? 0, text: ev.delta.text });
+        }
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'thinking_delta' && ev.delta.thinking) {
+          this.emit({ type: 'thinkingDelta', msgId: this.currentMsgId, index: ev.index ?? 0, text: ev.delta.thinking });
         }
         return;
       }
@@ -431,6 +452,8 @@ export class AgentSession {
           },
         });
         void this.q?.supportedCommands().then((c) => this.emitCommands(c), () => undefined);
+        // The window and the subscription's limits are known before the first turn, so the gauges needn't wait for one.
+        void this.reportGauges();
         if (this.provider.kind === 'subscription') {
           void this.q?.accountInfo().then(
             (a) => this.onAccount?.({ email: a.email, organization: a.organization, plan: a.subscriptionType }),
