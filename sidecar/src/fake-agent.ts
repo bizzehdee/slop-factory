@@ -17,6 +17,7 @@ import { ProcessTracker } from './processes.js';
 //   "questions"    replies with a numbered list of questions
 //   "subagent"     runs a background subagent for a moment
 //   "slow"         takes a few seconds, so a test can press Stop
+//   "background"   leaves a subagent running for a few seconds after the turn ends
 //   "edit"         adds a line to notes.txt in the project, with a checkpoint to undo it
 //   anything else  replies "Done: <first line of the message>"
 
@@ -412,6 +413,10 @@ export class FakeSession {
       if (lower.includes('subagent')) {
         await this.subagent('Work in a worktree', lower.includes('slow'));
         return this.reply('The subagent has finished.');
+      }
+      if (lower.includes('background')) {
+        void this.subagent('Background work', true);
+        return this.reply('It carries on in the background.');
       }
       if (lower.includes('ponder') && this.provider.thinking !== 'off') {
         const msgId = `msg_${randomUUID()}`;

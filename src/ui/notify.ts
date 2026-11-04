@@ -16,6 +16,6 @@ export function notify(p: Proj, kind: NotifyKind, detail?: string): void {
       ? detail ?? 'The agent is waiting for you.'
       : kind === 'finished'
         ? detail ?? 'The agent has finished.'
-        : 'Everything in Up next has started.';
+        : 'Everything in the queue has started.';
   void bridge?.notify(p.name, body).catch(() => undefined);
 }

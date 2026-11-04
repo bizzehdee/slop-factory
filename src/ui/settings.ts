@@ -5,6 +5,8 @@ import { field, openProviderDialog } from './providers';
 import { active, load, projects, providerList, send, store } from './state';
 import { notificationsOn, setNotifications } from './notify';
 import { renderAccounts, wireAccounts } from './accounts';
+import { pump } from './queue';
+import { renderQueue, setTaskStart } from './queue-panel';
 
 // ---------- settings ----------
 
@@ -172,12 +174,15 @@ export function wireSettings(): void {
     const mode = (ev.target as HTMLSelectElement).value;
     store('slop-factory:task-start', mode === 'current' ? null : mode);
     renderSettings();
+    if (active) {
+      renderQueue(active);
+      pump(active);
+    }
   });
   $('task-start-project').addEventListener('change', (ev) => {
     if (!active) return;
     const mode = (ev.target as HTMLSelectElement).value as TaskStart | '';
-    active.taskStart = mode || null;
-    send({ type: 'setProjectTaskStart', project: active.dir, mode: mode || null });
+    setTaskStart(active, (mode || null) as TaskStart | null);
   });
   $('fetch-minutes').addEventListener('change', (ev) => send({ type: 'gitSettings', fetchMinutes: Number((ev.target as HTMLSelectElement).value) }));
   $('mcp-add').addEventListener('click', () => openMcpForm());

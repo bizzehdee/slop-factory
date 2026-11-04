@@ -76,6 +76,7 @@ interface Project {
   latest: Map<string, ProjectEvent>;
   openPermissions: Set<string>;
   laneRun?: LaneRun | null;
+  queueRunning?: boolean; // kept for the app's life, not on disk: opening a project never sets its queue off
   git: GitMonitor;
   framework: FrameworkMonitor;
   onEvent?: (e: ProjectEvent) => void;
@@ -138,7 +139,8 @@ function projectEmitter(p: Pick<Project, 'dir' | 'transcript' | 'latest' | 'open
   };
 }
 
-const queueEvent = (q: Priorities, laneRun?: LaneRun | null): ProjectEvent => ({ type: 'priorities', order: q.list(), subagent: q.subagentKeys(), laneRun: laneRun ?? null });
+const queueEvent = (q: Priorities, laneRun?: LaneRun | null, running = false): ProjectEvent => ({ type: 'priorities', order: q.list(), subagent: q.subagentKeys(), laneRun: laneRun ?? null, running });
+const projectQueue = (p: Project): ProjectEvent => queueEvent(p.priorities, p.laneRun, !!p.queueRunning);
 
 async function loadPrompts(dir: string): Promise<DeskPrompts> {
   const raw = await readProjectSettings(dir);
@@ -258,17 +260,22 @@ async function closeProject(dir: string): Promise<void> {
   emit({ type: 'closed', project: dir });
 }
 
+/** Whether the agent, or anything it started in the background, is still at work. */
+function workRunning(p: Project): boolean {
+  const processes = (p.latest.get('processes') as Extract<ProjectEvent, { type: 'processes' }> | undefined)?.list ?? [];
+  return p.session.busy || processes.some((x) => x.status === 'running' || x.status === 'pending');
+}
+
 /**
  * Start a task in the project's conversation, as Settings says: as it is, compacted first, or in a
  * new conversation. The last two keep the tokens each task sends down. A new conversation would
- * end work still running here, so then it compacts instead.
+ * end work still running here, so a task you start yourself compacts instead (the queue waits; see
+ * runAction).
  */
 async function startTask(p: Project, prompt: string, action: { kind: SentAction; key: string }): Promise<void> {
   let mode = providers.taskStart(p.dir);
   if (mode === 'new') {
-    const processes = (p.latest.get('processes') as Extract<ProjectEvent, { type: 'processes' }> | undefined)?.list ?? [];
-    const running = p.session.busy || processes.some((x) => x.status === 'running' || x.status === 'pending');
-    if (!running) {
+    if (!workRunning(p)) {
       await restartSession(p, true);
       p.session.send(prompt, action);
       return;
@@ -725,17 +732,17 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'togglePriority': {
       const p = need(cmd.project);
       await p.priorities.toggle(cmd.key);
-      return p.out(queueEvent(p.priorities, p.laneRun));
+      return p.out(projectQueue(p));
     }
     case 'enqueue': {
       const p = need(cmd.project);
       await p.priorities.enqueue(cmd.keys, cmd.lane, !!cmd.front);
-      return p.out(queueEvent(p.priorities, p.laneRun));
+      return p.out(projectQueue(p));
     }
     case 'reorderQueue': {
       const p = need(cmd.project);
       await p.priorities.reorder(cmd.order);
-      return p.out(queueEvent(p.priorities, p.laneRun));
+      return p.out(projectQueue(p));
     }
     case 'capture': {
       const p = need(cmd.project);
@@ -756,7 +763,12 @@ async function handle(cmd: UiCommand): Promise<void> {
     case 'setLaneRun': {
       const p = need(cmd.project);
       p.laneRun = cmd.run;
-      return p.out(queueEvent(p.priorities, p.laneRun));
+      return p.out(projectQueue(p));
+    }
+    case 'setQueueRunning': {
+      const p = need(cmd.project);
+      p.queueRunning = cmd.running;
+      return p.out(projectQueue(p));
     }
     case 'readDocs': {
       const p = need(cmd.project);
@@ -786,10 +798,17 @@ async function handle(cmd: UiCommand): Promise<void> {
     }
     case 'runAction': {
       const p = need(cmd.project);
+      // The queue keeps to "a new conversation" strictly: rather than compact, the item keeps its
+      // place until the work still running here ends. The window waits for that too, so this only
+      // catches a start that crossed with new work.
+      if (cmd.queued && cmd.action === 'start' && providers.taskStart(p.dir) === 'new' && workRunning(p)) {
+        p.out({ type: 'notice', level: 'info', text: `${cmd.item.id ?? cmd.item.title} stays queued until the work running here ends, so it can start in a new conversation.` });
+        return p.out(projectQueue(p));
+      }
       // Once something starts it is no longer waiting in the priority queue.
       if ((cmd.action === 'start' || cmd.action === 'startSubagent') && p.priorities.list().includes(cmd.item.key)) {
         await p.priorities.remove(cmd.item.key);
-        p.out(queueEvent(p.priorities, p.laneRun));
+        p.out(projectQueue(p));
       }
       const prompt = promptFor(cmd.action, cmd.item, p.prompts);
       const action = { kind: cmd.action, key: cmd.item.key };

@@ -1,10 +1,10 @@
 import type { BugEntry, OpenQuestion, TaskFile, TaskItem } from '../../sidecar/src/protocol';
 import { BoardItem, PHASE_PREFIX, allItems, bugItem, itemRef, legacySections, legacyStatus, phaseDocFor, taskItem } from './board-model';
 import { blockRel, docBlocks, showProgress } from './docs';
-import { $, Child, ICON_CLOSE, ICON_FLAG, h, svgIcon } from './dom';
-import { runAction } from './menus';
+import { $, Child, ICON_FLAG, h, svgIcon } from './dom';
 import { openQuestion, where } from './questions';
-import { isFree, laneOf, moreButton, nextQueued, startSubagentQueued, waitingOn } from './queue';
+import { moreButton } from './queue';
+import { renderQueue } from './queue-panel';
 import { Proj, active, send } from './state';
 import { workstreamSection } from './workstreams';
 
@@ -45,7 +45,7 @@ export function docChips(p: Proj, item: BoardItem): HTMLElement | null {
 }
 
 export function flag(): HTMLElement {
-  const f = h('span', { class: 'flag', title: 'Prioritised' });
+  const f = h('span', { class: 'flag', title: 'In the queue' });
   f.append(svgIcon(ICON_FLAG));
   return f;
 }
@@ -187,118 +187,12 @@ export function phaseTop(p: Proj, item: BoardItem | undefined, head: HTMLElement
   return h('div', { class: 'phase-top' }, head, moreButton(p, item));
 }
 
-// Up next rows can be dragged into a new order, or moved with Alt+Up and Alt+Down.
-let dragKey: string | undefined;
-
-function moveTo(p: Proj, order: string[], key: string, before: string | undefined): void {
-  const rest = order.filter((k) => k !== key);
-  const at = before ? rest.indexOf(before) : rest.length;
-  rest.splice(at < 0 ? rest.length : at, 0, key);
-  if (rest.join('\n') !== order.join('\n')) send({ type: 'reorderQueue', project: p.dir, order: rest });
-}
-
-function draggableRow(p: Proj, key: string, order: string[], tag: 'li', props: Record<string, unknown>, ...children: Child[]): HTMLElement {
-  const li = h(tag, { ...props, draggable: 'true', tabindex: 0, dataset: { key }, title: 'Drag to change the order (or Alt+Up / Alt+Down)' }, ...children);
-  li.addEventListener('dragstart', (ev) => {
-    dragKey = key;
-    li.classList.add('dragging');
-    ev.dataTransfer?.setData('text/plain', key);
-  });
-  li.addEventListener('dragend', () => {
-    dragKey = undefined;
-    li.classList.remove('dragging');
-    document.querySelectorAll('.drop-before').forEach((x) => x.classList.remove('drop-before'));
-  });
-  li.addEventListener('dragover', (ev) => {
-    if (!dragKey || dragKey === key) return;
-    ev.preventDefault();
-    li.classList.add('drop-before');
-  });
-  li.addEventListener('dragleave', () => li.classList.remove('drop-before'));
-  li.addEventListener('drop', (ev) => {
-    ev.preventDefault();
-    li.classList.remove('drop-before');
-    if (dragKey && dragKey !== key) moveTo(p, order, dragKey, key);
-  });
-  li.addEventListener('keydown', (ev) => {
-    if (!ev.altKey || (ev.key !== 'ArrowUp' && ev.key !== 'ArrowDown')) return;
-    ev.preventDefault();
-    const i = order.indexOf(key);
-    const before = ev.key === 'ArrowUp' ? order[i - 1] : order[i + 2];
-    if (ev.key === 'ArrowUp' && i === 0) return;
-    moveTo(p, order, key, before);
-  });
-  return li;
-}
-
-function dequeueButton(p: Proj, it: BoardItem): HTMLButtonElement {
-  const b = h('button', { class: 'more dequeue', type: 'button', title: 'Remove from the queue', 'aria-label': `Remove ${itemRef(it) || it.title} from the queue` }) as HTMLButtonElement;
-  b.append(svgIcon(ICON_CLOSE));
-  b.addEventListener('click', () => send({ type: 'togglePriority', project: p.dir, key: it.key }));
-  return b;
-}
-
-export function renderPriorities(p: Proj): void {
-  const section = $('priorities-section');
-  const items = allItems(p);
-  const queued = p.priorities.map((k) => items.get(k)).filter((x): x is BoardItem => !!x);
-  section.hidden = !queued.length;
-  const open = queued.filter((q) => !q.done).length;
-  const next = isFree(p) ? nextQueued(p) : undefined;
-  // The subagent lane stalls after Stop; Start next picks it up too.
-  const nextSub = p.laneRun ? undefined : nextQueued(p, undefined, 'subagent');
-  $('priorities-count').replaceChildren(
-    open ? `${open} queued` : '',
-    next || nextSub
-      ? h(
-          'button',
-          {
-            class: 'link-button',
-            type: 'button',
-            title: 'Start the next queued item now',
-            onclick: () => {
-              p.holdQueue = false;
-              if (next) runAction(p, 'start', next);
-              startSubagentQueued(p);
-              renderPriorities(p);
-            },
-          },
-          'Start next',
-        )
-      : '',
-  );
-  $('priorities').replaceChildren(
-    ...queued.map((it) =>
-      draggableRow(
-        p,
-        it.key,
-        queued.map((q) => q.key),
-        'li',
-        { class: `priority kind-${it.kind}${it.done ? ' done' : ''}${it.kind === 'bug' && !it.done ? ' open-bug' : ''}` },
-        h('span', { class: 'item-id' }, itemRef(it) || '·'),
-        h('button', { class: 'priority-title', type: 'button', onclick: () => showProgress(p, it), title: 'Show progress' }, it.title),
-        h(
-          'span',
-          { class: 'priority-state' },
-          p.laneRun?.key === it.key ? 'running' : (!it.done && waitingOn(it, items)) || (it.kind === 'bug' ? it.status : it.state === 'doing' ? 'in progress' : it.done ? 'done' : ''),
-          laneOf(p, it.key) === 'subagent' ? h('span', { class: 'lane-tag', title: 'Starts in a background subagent with its own worktree' }, 'subagent') : null,
-        ),
-        dequeueButton(p, it),
-        moreButton(p, it),
-      ),
-    ),
-  );
-}
-
 export function renderTasks(): void {
   const p = active;
   const tasksEl = $('tasks');
   $('delivery-section').hidden = !p;
-  if (!p) {
-    $('priorities-section').hidden = true;
-    return;
-  }
-  renderPriorities(p);
+  renderQueue(p);
+  if (!p) return;
   boardIndex = allItems(p);
 
   const files = p.tasks;

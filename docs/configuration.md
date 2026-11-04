@@ -202,7 +202,7 @@ their built-in text, so you can change one without copying the rest.
 | **Find workstreams** | the board | `findWorkstreams` | |
 | **Ask the agent to commit** | the uncommitted changes, from the git line under the project's name | `commitChanges` | |
 
-Items in **Up next** use the same prompts when their turn comes: **Start now** for the main
+Items in the **Queue** use the same prompts when their turn comes: **Start now** for the main
 queue, **Start in subagent** for items queued to run in a subagent.
 
 ### Placeholders

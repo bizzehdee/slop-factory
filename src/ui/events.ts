@@ -1,5 +1,6 @@
 import type { SidecarEvent } from '../../sidecar/src/protocol';
-import { renderPriorities, renderTasks } from './board';
+import { renderTasks } from './board';
+import { renderQueue } from './queue-panel';
 import { activate, renderComposer, renderHeader, renderProcesses, renderProjects, renderSession } from './chrome';
 import { closeDocs, docsView, refreshDocs, renderDocs } from './docs';
 import { $ } from './dom';
@@ -7,7 +8,7 @@ import { loginUrl, onLoginEvent } from './login';
 import { onCreateEvent } from './newproject';
 import { onProbe, probe } from './providers';
 import { afterAnswer, askQuestions, noteReply, openQuestion, renderQuestions, scrollToEnd, userMessage } from './questions';
-import { nextQueued, startFreed, waitingQueued, startQueued, trackLane } from './queue';
+import { nextQueued, pump, trackLane, turnEnded } from './queue';
 import { applyTheme, onMcpServers, renderSettings, type Theme } from './settings';
 import { active, editorList, setAccountList, load, newProject, projects, providerList, receivePrefs, saveOpenProjects, send, setEditorList, setProviderList } from './state';
 import { assistantDelta, assistantFinal, thinkingDelta, thinkingFinal, emptyTranscript, markAnswered, notice, permissionRequest, toolResult, toolUse, settleTools } from './transcript';
@@ -118,6 +119,7 @@ export function onEvent(e: SidecarEvent): void {
       refreshWorktrees(p);
       // The subagent lane may have moved on while the window was away.
       trackLane(p);
+      pump(p);
       p.transcript.scrollTop = p.transcript.scrollHeight;
       break;
     case 'closed':
@@ -139,6 +141,8 @@ export function onEvent(e: SidecarEvent): void {
     case 'taskStart':
       p.taskStart = e.mode;
       if (isActive && $<HTMLDialogElement>('settings-dialog').open) renderSettings();
+      if (isActive) renderQueue(p);
+      pump(p); // no longer starting in a new conversation: background work needn't hold the queue up
       return;
     case 'git':
       p.git = e.info;
@@ -218,14 +222,16 @@ export function onEvent(e: SidecarEvent): void {
       p.status = e.status;
       if (finished && !p.replaying) {
         // Tell the person when nothing else is about to start: the work, or the whole queue, is done.
-        const held = p.holdQueue || !!p.lastTurn?.stopped;
-        const more = !held && (nextQueued(p) || (!p.laneRun && nextQueued(p, undefined, 'subagent')));
+        const carriesOn = p.queueRunning && !p.lastTurn?.stopped && !p.lastTurn?.isError;
+        const more = carriesOn && (nextQueued(p) || (!p.laneRun && nextQueued(p, undefined, 'subagent')));
         if (!more && !p.lastTurn?.stopped) {
           notify(p, p.queueRan ? 'queueDone' : 'finished', p.lastReply?.split('\n').find((l) => l.trim())?.slice(0, 140));
           p.queueRan = false;
         }
-        startQueued(p);
+        turnEnded(p);
       }
+      // The agent has taken up what was sent: the queue no longer needs to wait for it.
+      if (e.busy) p.startSent = undefined;
       break;
     }
     case 'user':
@@ -291,6 +297,8 @@ export function onEvent(e: SidecarEvent): void {
       const ended = live(e.list) < live(p.processes);
       p.processes = e.list;
       trackLane(p);
+      // A subagent-lane item ended, or background work a new conversation would have ended is done.
+      pump(p);
       if (ended && !p.replaying) refreshWorktrees(p);
       if (docsView?.subagent && isActive) renderSubagentView(p);
       break;
@@ -308,19 +316,21 @@ export function onEvent(e: SidecarEvent): void {
         renderWorktreeView(p);
       }
       return;
-    case 'tasks': {
-      const before = p.tasks.length ? waitingQueued(p) : undefined;
+    case 'tasks':
       p.tasks = e.files;
       p.docs = new Set(e.docs);
       p.docQuestions = e.questions ?? [];
       refreshDocs(p);
-      if (before) startFreed(p, before);
+      // A queued task waiting on another may be free to start now.
+      pump(p);
       break;
-    }
     case 'priorities':
       p.priorities = e.order;
       p.subagentLane = new Set(e.subagent ?? []);
       p.laneRun = e.laneRun ?? undefined;
+      p.queueRunning = !!e.running;
+      // Something added to a running queue, or moved to the front, starts when its turn comes.
+      pump(p);
       break;
     case 'docs':
       if (docsView && docsView.project === p.dir && docsView.requestId === e.requestId) {
@@ -340,10 +350,11 @@ export function onEvent(e: SidecarEvent): void {
     case 'turnEnd':
       return renderSession();
     case 'busy':
-      renderPriorities(p);
+      renderQueue(p);
       renderFramework(); // its Upgrade waits for the agent to finish
       return renderComposer();
     case 'processes':
+      renderQueue(p); // the queue may be waiting on background work
       // A workstream's subagent starting or ending changes its state on the board.
       if (workstreamFile(p)) {
         renderTasks();

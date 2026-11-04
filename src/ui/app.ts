@@ -14,6 +14,8 @@ import { wireCapture } from './capture';
 import { slashKey, takeAttachments, wireComposer } from './composer';
 import { openPalette, wirePalette } from './palette';
 import { wireGit } from './git';
+import { setQueueRunning } from './queue';
+import { wireQueuePanel } from './queue-panel';
 
 export function addProjectMenu(): MenuItem[] {
   return [
@@ -86,6 +88,7 @@ export async function init(): Promise<void> {
   wireComposer();
   wirePalette();
   wireGit();
+  wireQueuePanel();
   $('open-palette').addEventListener('click', openPalette);
   $('composer').addEventListener('submit', (ev) => {
     ev.preventDefault();
@@ -101,8 +104,8 @@ export async function init(): Promise<void> {
   });
   $('stop').addEventListener('click', () => {
     if (!active) return;
-    // Stopping Claude also pauses the queue, so the next item doesn't start in its place.
-    active.holdQueue = true;
+    // Stopping the agent also pauses the queue, so the next item doesn't start in its place.
+    setQueueRunning(active, false);
     send({ type: 'interrupt', project: active.dir });
   });
   $('permission-mode').addEventListener('change', (ev) => {

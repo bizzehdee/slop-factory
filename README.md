@@ -83,7 +83,7 @@ whoever changed them:
 - **Specs and summaries.** A task's `spec` and `summary` chips open them, formatted, beside the
   conversation.
 
-![A task's spec open beside the conversation, with Start now, Start in subagent and Prioritise](docs/screenshots/task-spec.png)
+![A task's spec open beside the conversation, with Start now, Start in subagent and Add to queue](docs/screenshots/task-spec.png)
 
 - **What's blocking what.** An open task shows **waits on T4** while a task it depends on is
   unfinished, and each **Blocked by** reason. Click one to go to the blocker: another task or bug on
@@ -103,23 +103,39 @@ Every task, bug and phase has a ⋯ menu:
 - **Start now** sends the work to the project's agent straight away.
 - **Start in subagent** runs it in the background in its own git worktree, so it works in parallel
   with whatever else is going on and you can review and merge its branch afterwards.
-- **Prioritise** queues it under **Up next**. Queued work starts by itself, in order, each time the
-  agent finishes what it's doing. If the agent is free, it starts at once.
+- **Add to queue** puts it at the end of the **Queue**, at the top of the right sidebar.
 - **Show progress** opens its spec and summary; **Summarise work done** and **Reinvestigate** are
   there for finished work.
 
 **Each task starts in** (Settings) chooses where Start now and the queue send a task: the current
 conversation as it is, the current conversation **compacted** first (summarised, so the task sends
 far fewer tokens), or a **new conversation** (it starts from nothing). It's a default for every
-project, and each project can choose differently. A new conversation would stop work still running
-in the project, so then the task is compacted instead.
+project, and each project can choose differently, in Settings or at the top of the Queue. A new
+conversation would stop work still running in the project, so a task you start yourself is
+compacted instead.
 
-Starting a **phase** works through its open tasks: the first starts and the rest queue behind it.
-Phases started in a subagent queue their tasks so each starts when the previous subagent finishes.
+### The queue
+
+The queue hands the agent one task at a time, so the app decides when each starts and how, rather
+than the agent working down a list it was given. Press **Run** and each item starts in turn as the
+one before it finishes; **Pause** lets the current one finish and starts nothing more. Every item
+starts the way **Each task starts in** says, with no exceptions: when that's a new conversation and
+something is still running in the background, the next item waits for it to end instead of starting
+in the old conversation.
+
+Keep adding to it while it runs, from any task or bug's ⋯ menu, and drag items into a new order
+(or use Alt+Up and Alt+Down). Take anything off with its **×** whenever you like. Whatever is at the
+top when the current item finishes goes next. A running queue that has emptied starts the next
+thing you add straight away.
+
 The queue respects dependencies: a task that waits on another starts once that one is done, and
-whatever can go first goes first. Drag items in **Up next** into a new order (or use Alt+Up and
-Alt+Down), and take anything off with its **×** whenever you like. Pressing Stop pauses the queue
-until you start something again or choose **Start next**.
+whatever can go first goes first. Pressing Stop pauses it, and so does a turn that ends with an
+error; press **Run** to carry on. A project's queue is paused whenever the app starts, so opening a
+project never sets work off.
+
+Starting a **phase** works through its open tasks: the first starts, the rest queue behind it, and
+the queue runs. Phases started in a subagent queue their tasks so each starts when the previous
+subagent finishes. These go one at a time in their own lane, alongside the conversation's.
 
 ### Subagents and their worktrees
 
@@ -358,7 +374,7 @@ action asks the agent to do:
 [Project settings](docs/configuration.md) covers every setting, every prompt with its built-in
 text and placeholders, and recipes to start from.
 
-The **Up next** queue is kept in `.slop-factory/priorities.json` in the project. Commit it to share
+The queue's order is kept in `.slop-factory/priorities.json` in the project. Commit it to share
 the queue, or add it to `.gitignore`.
 
 ## Keyboard shortcuts
@@ -370,7 +386,7 @@ the queue, or add it to `.gitignore`.
 | Ctrl/Cmd+O | Open a folder |
 | Enter / Shift+Enter | Send / new line |
 | `/` | Commands and skills, in the message box |
-| Alt+Up / Alt+Down | Move an item in **Up next** |
+| Alt+Up / Alt+Down | Move an item in the **Queue** |
 | Esc | Close the side panel or a menu |
 
 ## Good to know

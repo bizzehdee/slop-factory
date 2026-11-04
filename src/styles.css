@@ -1604,10 +1604,57 @@ textarea {
   }
 }
 
-/* ---------- priorities ---------- */
+/* ---------- the queue, at the top of the right bar ---------- */
 
-.priorities .pane-head {
-  padding-top: 16px;
+.queue {
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.queue .pane-head {
+  gap: 8px;
+  align-items: center;
+}
+.queue .pane-head h2 {
+  margin-right: auto;
+}
+.queue-run[aria-pressed='true'] {
+  border-color: var(--clay);
+  color: var(--clay);
+}
+.queue-start {
+  display: grid;
+  gap: 4px;
+  padding: 0 20px 8px;
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+.queue-start span {
+  flex: none;
+}
+.queue-start select {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s);
+  padding: 2px 6px;
+  font-size: var(--step--1);
+  color: var(--text);
+}
+.queue-status {
+  margin: 0;
+  padding: 0 20px 8px;
+  font-size: var(--step--1);
+  color: var(--muted);
+}
+.queue-now {
+  padding: 0 20px 6px;
+}
+.priority.now {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  border-left-color: var(--done);
+  background: color-mix(in srgb, var(--done) 8%, transparent);
 }
 .priority-list {
   list-style: none;

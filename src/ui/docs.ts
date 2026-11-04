@@ -4,7 +4,7 @@ import { renderHeader } from './chrome';
 import { $, h, md } from './dom';
 import { runAction } from './menus';
 import { questionViewKey, renderQuestionView, renderQuestions, resetQuestionView, where } from './questions';
-import { prioritise } from './queue';
+import { toggleQueued } from './queue';
 import { renderWorktreeView } from './worktrees';
 import { Proj, projects, send } from './state';
 import { renderSubagentView } from './subagents';
@@ -156,7 +156,7 @@ export function renderDocs(): void {
       actions.append(h('button', { class: 'button primary', type: 'button', onclick: () => runAction(p, 'start', item) }, 'Start now'));
       actions.append(h('button', { class: 'button', type: 'button', title: 'A background subagent does the work in its own git worktree', onclick: () => runAction(p, 'startSubagent', item) }, 'Start in subagent'));
       const queued = p.priorities.includes(item.key);
-      actions.append(h('button', { class: 'button quiet', type: 'button', onclick: () => prioritise(p, item) }, queued ? 'Remove from queue' : 'Prioritise'));
+      actions.append(h('button', { class: 'button quiet', type: 'button', onclick: () => toggleQueued(p, item) }, queued ? 'Remove from queue' : 'Add to queue'));
     } else {
       actions.append(h('button', { class: 'button', type: 'button', onclick: () => runAction(p, 'summarise', item) }, 'Summarise work done'));
       actions.append(h('button', { class: 'button', type: 'button', onclick: () => runAction(p, 'reinvestigate', item) }, 'Reinvestigate'));

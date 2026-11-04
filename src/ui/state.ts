@@ -39,7 +39,9 @@ export interface Proj {
   draft: string;
   unseen: boolean;
   replaying: boolean;
-  holdQueue: boolean; // set by Stop: the queue waits until you start something again
+  queueRunning: boolean; // the queue starts its items, each as the one before it ends; Stop or an error pauses it
+  queueCurrent?: string; // the conversation-lane item the queue started, while it runs
+  startSent?: number; // when a start was sent that hasn't made the agent busy yet: the queue waits for it
   subagentLane: Set<string>; // queued keys that start in a background subagent
   laneRun?: LaneRun; // the subagent-lane item running now
   worktrees: WorktreeInfo[];
@@ -164,7 +166,7 @@ export function newProject(dir: string, name: string): Proj {
     draft: '',
     unseen: false,
     replaying: false,
-    holdQueue: false,
+    queueRunning: false,
     subagentLane: new Set(),
     worktrees: [],
     agentLogs: new Map(),

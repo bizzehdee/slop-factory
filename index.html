@@ -38,14 +38,6 @@
           <div id="framework-update" class="git-status framework-update" role="status" hidden></div>
         </div>
 
-        <section id="priorities-section" class="priorities" aria-labelledby="priorities-heading" hidden>
-          <div class="pane-head">
-            <h2 id="priorities-heading">Up next</h2>
-            <span id="priorities-count" class="pane-meta"></span>
-          </div>
-          <ol id="priorities" class="pane-body priority-list"></ol>
-        </section>
-
         <section id="delivery-section" aria-labelledby="tasks-heading" hidden>
           <div class="pane-head">
             <h2 id="tasks-heading">Delivery</h2>
@@ -130,6 +122,25 @@
       </section>
 
       <aside class="sidebar side-pane">
+        <section id="queue-section" class="queue" aria-labelledby="queue-heading" hidden>
+          <div class="pane-head">
+            <h2 id="queue-heading">Queue</h2>
+            <span id="queue-count" class="pane-meta"></span>
+            <button id="queue-run" class="mode-button queue-run" type="button" aria-pressed="false">Run</button>
+          </div>
+          <label class="queue-start" for="queue-task-start">
+            <span>Each task starts in</span>
+            <select id="queue-task-start" title="Where each queued task starts. The queue keeps to it for every item.">
+              <option value="">Default</option>
+              <option value="current">the conversation as it is</option>
+              <option value="compact">the conversation, compacted first</option>
+              <option value="new">a new conversation</option>
+            </select>
+          </label>
+          <p id="queue-status" class="queue-status" role="status" hidden></p>
+          <ol id="queue-now" class="priority-list queue-now" aria-label="Running from the queue" hidden></ol>
+          <ol id="queue" class="pane-body priority-list" aria-label="Queued"></ol>
+        </section>
         <section id="questions-section" class="questions" aria-labelledby="questions-heading" hidden>
           <div class="pane-head">
             <h2 id="questions-heading">Questions</h2>
@@ -283,7 +294,7 @@
               <option value="new">A new conversation</option>
             </select>
           </label>
-          <p class="settings-note">For Start now and the Up next queue, in every project unless a project says otherwise. Compacting summarises the conversation before each task, and a new conversation starts from nothing; both send fewer tokens with each task, at the cost of what the agent remembers from earlier ones.</p>
+          <p class="settings-note">For Start now and the queue, in every project unless a project says otherwise. Compacting summarises the conversation before each task, and a new conversation starts from nothing; both send fewer tokens with each task, at the cost of what the agent remembers from earlier ones.</p>
         </section>
 
         <section class="settings-section" aria-labelledby="settings-git">

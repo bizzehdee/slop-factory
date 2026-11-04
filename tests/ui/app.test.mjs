@@ -51,21 +51,80 @@ test('a reply keeps the conversation scrolled to the end', async () => {
   assert.ok(gap < 5, `transcript is ${gap}px from the bottom`);
 });
 
-test('prioritised work waits for the current turn, and Stop holds the queue', async () => {
-  const page = await app.open(await app.project());
+const actions = (page) => page.$$eval('.transcript:not([hidden]) .msg.user.action summary', (els) => els.map((e) => e.textContent.trim()));
+
+test('the queue, in the right sidebar, starts its items only while it runs, each after the last', async () => {
+  const page = await app.open(await app.project({
+    'tasks/task_phase_2.md': '# Phase 2: Export\n\n## Tasks\n\n- [x] T2: Schema\n- [ ] T5: Report\n- [ ] T6: Charts\n',
+  }));
+  const run = page.locator('.side-pane #queue-section #queue-run');
+  assert.equal(await run.textContent(), 'Run');
+  await (await itemMenu(page, task(page, 'Report'))).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('#queue .priority:has-text("T5")');
+  await page.waitForTimeout(300);
+  assert.equal(await page.locator('.msg.user.action').count(), 0, 'a paused queue starts nothing, though the agent is free');
+
+  // Running while the agent is busy: the first item waits for the turn to end.
   await page.fill('#prompt', 'Do something slow');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#stop:not([hidden])');
-  await (await itemMenu(page, task(page, 'Report'))).filter({ hasText: 'Prioritise' }).click();
-  await page.waitForSelector('.priority:has-text("T5")');
+  await run.click();
+  await page.waitForSelector('#queue-run[aria-pressed="true"]:has-text("Pause")');
+  await page.waitForTimeout(200);
+  assert.equal(await page.locator('.msg.user.action').count(), 0, 'waits for the current turn');
+  // Added while it runs: it goes after T5.
+  await (await itemMenu(page, page.locator('.bug', { hasText: 'Export fails' }).first())).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('.msg.user.action summary:has-text("B1")', { timeout: 15_000 });
+  await idle(page);
+  assert.deepEqual(await actions(page), ['Start now T5', 'Start now B1']);
+  assert.equal(await page.locator('#queue .priority').count(), 0);
+
+  // A running queue that has emptied starts the next thing added at once.
+  await (await itemMenu(page, task(page, 'Charts'))).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('.msg.user.action summary:has-text("T6")');
+  await idle(page);
+  assert.equal((await actions(page)).length, 3, 'started once');
+  assert.deepEqual(page.errors, []);
+});
+
+test('Stop pauses the queue, and Run carries on from where it was', async () => {
+  const page = await app.open(await app.project());
+  await page.click('#queue-run');
+  await page.fill('#prompt', 'Do something slow');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('#stop:not([hidden])');
+  await (await itemMenu(page, task(page, 'Report'))).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('#queue .priority:has-text("T5")');
   await page.click('#stop');
   await page.waitForSelector('.notice:has-text("Stopped.")');
+  await page.waitForSelector('#queue-run[aria-pressed="false"]:has-text("Run")');
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.msg.user.action').count(), 0, 'nothing started after Stop');
-  await page.click('#priorities-count .link-button');
+  await page.click('#queue-run');
   await page.waitForSelector('.msg.user.action:has-text("T5")');
   await idle(page);
-  assert.equal(await page.locator('.priority').count(), 0);
+  assert.equal(await page.locator('#queue .priority').count(), 0);
+});
+
+test('a queue whose tasks start in a new conversation waits for background work rather than compacting', async () => {
+  const page = await app.open(await app.project());
+  await page.selectOption('#queue-task-start', 'new');
+  await page.fill('#prompt', 'Leave something running in the background');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector('.proc.live:has-text("Background work")');
+  await idle(page);
+  await (await itemMenu(page, task(page, 'Report'))).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('#queue .priority:has-text("T5")');
+  await page.click('#queue-run');
+  await page.waitForSelector('#queue-status:has-text("Waiting for the work running in the background")');
+  assert.equal(await page.locator('.msg.user.action').count(), 0, 'not started in the old conversation');
+  // The background work ends, and only then does T5 start, in a new conversation.
+  await page.waitForSelector('.msg.user.action:has-text("T5")', { timeout: 15_000 });
+  await page.waitForSelector('.notice:has-text("Started a new conversation.")');
+  assert.equal(await page.locator('.notice:has-text("compacted rather than a new one")').count(), 0);
+  await idle(page);
+  await page.selectOption('#queue-task-start', '');
+  assert.deepEqual(page.errors, []);
 });
 
 test('starting a phase starts the first task that can start and queues the rest, which can be removed', async () => {
@@ -79,13 +138,13 @@ test('starting a phase starts the first task that can start and queues the rest,
   await page.click('#menu .menu-item:has-text("Start now, queue the rest")');
   // T3 waits on T4 and T4 is blocked, so T5 goes first.
   await page.waitForSelector('.msg.user.action:has-text("T5")');
-  await page.waitForSelector('.priority:has-text("T4")');
-  assert.deepEqual(await page.$$eval('.priority .item-id', (els) => els.map((e) => e.textContent)), ['T3', 'T4']);
-  const row = (id) => page.locator('.priority', { has: page.locator('.item-id', { hasText: new RegExp(`^${id}$`) }) });
+  await page.waitForSelector('#queue .priority:has-text("T4")');
+  assert.deepEqual(await page.$$eval('#queue .priority .item-id', (els) => els.map((e) => e.textContent)), ['T3', 'T4']);
+  const row = (id) => page.locator('#queue .priority', { has: page.locator('.item-id', { hasText: new RegExp(`^${id}$`) }) });
   assert.match(await row('T3').locator('.priority-state').textContent(), /waits on T4/);
   assert.match(await row('T4').locator('.priority-state').textContent(), /blocked/);
   await row('T4').locator('.dequeue').click();
-  await page.waitForFunction(() => document.querySelectorAll('.priority').length === 1);
+  await page.waitForFunction(() => document.querySelectorAll('#queue .priority').length === 1);
   // When the agent is free, T3 still waits: nothing else starts.
   await idle(page);
   await page.waitForTimeout(400);
@@ -98,8 +157,9 @@ test('a queued task waiting on another starts once that one is ticked done', asy
   await page.fill('#prompt', 'Do something slow');
   await page.keyboard.press('Enter');
   await page.waitForSelector('#stop:not([hidden])');
-  await (await itemMenu(page, task(page, 'Scheduler'))).filter({ hasText: 'Prioritise' }).click();
-  await page.waitForSelector('.priority:has-text("T3")');
+  await (await itemMenu(page, task(page, 'Scheduler'))).filter({ hasText: 'Add to queue' }).click();
+  await page.waitForSelector('#queue .priority:has-text("T3")');
+  await page.click('#queue-run');
   await idle(page);
   await page.waitForTimeout(300);
   assert.equal(await page.locator('.msg.user.action').count(), 0, 'T3 waits on T4');
@@ -379,15 +439,15 @@ test('the queue can be put in a new order by keyboard or by dragging', async () 
   await mkdir(path.join(dir, '.slop-factory'), { recursive: true });
   await writeFile(path.join(dir, '.slop-factory/priorities.json'), JSON.stringify({ order: ['T5', 'B1', 'T4'] }));
   const page = await app.open(dir);
-  const ids = () => page.$$eval('.priority .item-id', (els) => els.map((e) => e.textContent));
-  await page.waitForSelector('.priority');
+  const ids = () => page.$$eval('#queue .priority .item-id', (els) => els.map((e) => e.textContent));
+  await page.waitForSelector('#queue .priority');
   assert.deepEqual(await ids(), ['T5', 'B1', 'T4']);
-  await page.focus('.priority >> nth=0');
+  await page.focus('#queue .priority >> nth=0');
   await page.keyboard.press('Alt+ArrowDown');
-  await page.waitForFunction(() => document.querySelector('.priority .item-id')?.textContent === 'B1');
+  await page.waitForFunction(() => document.querySelector('#queue .priority .item-id')?.textContent === 'B1');
   assert.deepEqual(await ids(), ['B1', 'T5', 'T4']);
-  await page.dragAndDrop('.priority >> nth=2', '.priority >> nth=0');
-  await page.waitForFunction(() => document.querySelector('.priority .item-id')?.textContent === 'T4');
+  await page.dragAndDrop('#queue .priority >> nth=2', '#queue .priority >> nth=0');
+  await page.waitForFunction(() => document.querySelector('#queue .priority .item-id')?.textContent === 'T4');
   assert.deepEqual(await ids(), ['T4', 'B1', 'T5']);
   assert.deepEqual(JSON.parse(await readFile(path.join(dir, '.slop-factory/priorities.json'), 'utf8')).order, ['T4', 'B1', 'T5']);
 });
@@ -791,7 +851,7 @@ test("a queued task that's only just been read isn't started as if it had been f
   await page.waitForSelector('.task:has-text("Report")');
   await page.waitForTimeout(800);
   assert.equal(await page.locator('.msg.user.action').count(), 0, 'nothing started');
-  assert.equal(await page.locator('.priority:has-text("T5")').count(), 1, 'still queued');
+  assert.equal(await page.locator('#queue .priority:has-text("T5")').count(), 1, 'still queued');
 });
 
 test('the theme, notifications and where new projects go are remembered by the app, not just the window', async () => {
@@ -883,9 +943,10 @@ test('tasks start compacted or in a new conversation, by default or for one proj
   await page.keyboard.press('Enter');
   await page.waitForSelector('#stop:not([hidden])');
   for (const name of ['Report', 'Export fails']) {
-    await (await itemMenu(page, page.locator('.task, .bug', { hasText: name }).first())).filter({ hasText: 'Prioritise' }).click();
+    await (await itemMenu(page, page.locator('.task, .bug', { hasText: name }).first())).filter({ hasText: 'Add to queue' }).click();
     await page.waitForTimeout(150);
   }
+  await page.click('#queue-run');
   await page.waitForFunction(() => [...document.querySelectorAll('.msg.user.action summary')].filter((s) => s.textContent.includes('B1')).length === 2, null, { timeout: 20_000 });
   await idle(page);
   assert.deepEqual(await actions(), ['Compact conversation T5', 'Start now T5', 'Compact conversation B1', 'Start now B1']);

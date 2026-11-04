@@ -146,10 +146,13 @@ export type UiCommand =
   | { type: 'enqueue'; project: string; keys: string[]; lane: QueueLane; front?: boolean }
   | { type: 'setLaneRun'; project: string; run: LaneRun | null }
   | { type: 'reorderQueue'; project: string; order: string[] }
+  // Run or pause the queue. Only a running queue starts its items, each as the one before it ends.
+  | { type: 'setQueueRunning'; project: string; running: boolean }
   // Quick capture from the board. rel: the phase document or plan document; section: an older TASK.md's.
   | { type: 'capture'; project: string; kind: 'task' | 'bug' | 'question'; title: string; rel?: string; section?: string; details?: string }
   | { type: 'readDocs'; project: string; requestId: string; key: string; paths: string[]; blocks?: { rel: string; line: number }[] }
-  | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem }
+  // queued: the queue started it, so where it starts is kept to strictly (see startTask)
+  | { type: 'runAction'; project: string; action: ItemAction; item: ActionItem; queued?: boolean }
   | { type: 'setProvider'; project: string; providerId: string }
   | { type: 'saveProvider'; provider: ProviderConfig; useFor?: string }
   | { type: 'deleteProvider'; id: string }
@@ -476,7 +479,7 @@ export type ProjectEvent =
   | { type: 'turnEnd'; durationMs: number; numTurns: number; isError: boolean; stopped?: boolean; inputTokens: number; outputTokens: number; costUsd: number; errors?: string[] }
   | { type: 'processes'; list: ProcessInfo[] }
   | { type: 'tasks'; files: TaskFile[]; docs: string[]; questions: OpenQuestion[] } // docs: watched specs, summaries and the root plan.md that exist
-  | { type: 'priorities'; order: string[]; subagent?: string[]; laneRun?: LaneRun | null } // subagent: the keys in the subagent lane
+  | { type: 'priorities'; order: string[]; subagent?: string[]; laneRun?: LaneRun | null; running?: boolean } // subagent: the keys in the subagent lane; running: the queue starts its items
   | { type: 'worktrees'; list: WorktreeInfo[] }
   | { type: 'worktreeDiff'; path: string; requestId: string; diff: string } // subagent: the keys in the subagent lane
   | { type: 'docs'; requestId: string; key: string; docs: DocContent[] }

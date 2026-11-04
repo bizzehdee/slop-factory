@@ -2,7 +2,7 @@ import type { ItemAction } from '../../sidecar/src/protocol';
 import { BoardItem, toActionItem } from './board-model';
 import { showProgress } from './docs';
 import { $, h } from './dom';
-import { phaseTasks, prioritise, startPhase } from './queue';
+import { phaseTasks, startPhase, toggleQueued } from './queue';
 import { Proj, send } from './state';
 
 // ---------- menus ----------
@@ -127,7 +127,7 @@ export function progressLabel(item: BoardItem): string | undefined {
   return item.legacy && !item.spec && !item.summary ? 'Show details' : 'Show progress';
 }
 
-export const PRIORITISE_LABEL = 'Prioritise (start after current work)';
+export const QUEUE_LABEL = 'Add to queue';
 
 export function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
   const queued = p.priorities.includes(item.key);
@@ -137,7 +137,8 @@ export function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
     // A phase starts as its open tasks, queued in order; each can come off the queue later.
     const tasks = phaseTasks(p, item);
     const inQueue = tasks.filter((t) => p.priorities.includes(t.key));
-    items.push({ label: tasks.length ? 'Prioritise its tasks' : PRIORITISE_LABEL, run: () => prioritise(p, item) });
+    if (!tasks.length) items.push({ label: queued ? 'Remove from queue' : QUEUE_LABEL, run: () => toggleQueued(p, item) });
+    else if (inQueue.length < tasks.length) items.push({ label: inQueue.length ? 'Add its other tasks to the queue' : 'Add its tasks to the queue', run: () => toggleQueued(p, item) });
     items.push({ label: tasks.length > 1 ? 'Start now, queue the rest' : 'Start now', run: () => startPhase(p, item, 'main') });
     items.push({ label: tasks.length > 1 ? 'Start in subagent, queue the rest' : 'Start in subagent (own worktree)', run: () => startPhase(p, item, 'subagent') });
     if (inQueue.length) items.push({ label: `Remove its ${inQueue.length} queued task${inQueue.length > 1 ? 's' : ''}`, run: () => inQueue.forEach((t) => send({ type: 'togglePriority', project: p.dir, key: t.key })) });
@@ -145,12 +146,12 @@ export function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
     return items;
   }
   if (!item.done) {
-    items.push({ label: queued ? 'Remove from queue' : PRIORITISE_LABEL, run: () => prioritise(p, item) });
+    items.push({ label: queued ? 'Remove from queue' : QUEUE_LABEL, run: () => toggleQueued(p, item) });
     items.push({ label: 'Start now', run: () => runAction(p, 'start', item) });
     items.push({ label: 'Start in subagent (own worktree)', run: () => runAction(p, 'startSubagent', item) });
     if (progress) items.push({ label: progress, run: () => showProgress(p, item) });
   } else {
-    if (queued) items.push({ label: 'Remove from queue', run: () => prioritise(p, item) });
+    if (queued) items.push({ label: 'Remove from queue', run: () => toggleQueued(p, item) });
     if (progress) items.push({ label: progress, run: () => showProgress(p, item) });
     items.push({ label: 'Summarise work done', run: () => runAction(p, 'summarise', item) });
     if (item.kind !== 'phase') items.push({ label: 'Reinvestigate with a subagent', run: () => runAction(p, 'reinvestigate', item) });
@@ -158,7 +159,9 @@ export function itemMenu(p: Proj, item: BoardItem): MenuItem[] {
   return items;
 }
 
-export function runAction(p: Proj, action: ItemAction, item: BoardItem): void {
-  if (action === 'start' || action === 'startSubagent') p.holdQueue = false;
-  send({ type: 'runAction', project: p.dir, action, item: toActionItem(item) });
+/** Send an item's action to the agent. queued: the queue started it, so where it starts is kept to strictly. */
+export function runAction(p: Proj, action: ItemAction, item: BoardItem, queued = false): void {
+  // Every action is a turn in the conversation: the queue holds its next item until the agent is busy with this one.
+  p.startSent = Date.now();
+  send({ type: 'runAction', project: p.dir, action, item: toActionItem(item), ...(queued ? { queued } : {}) });
 }
